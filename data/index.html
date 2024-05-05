@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gráfico de Função Seno</title>
+    <script src="chart.js"></script>
+</head>
+<body>
+    <canvas id="myChart" width="400" height="400"></canvas>
+
+    <script>
+        // Cria um contexto de desenho no elemento canvas
+        var ctx = document.getElementById('myChart').getContext('2d');
+
+        // Define os dados para o gráfico
+        var data = {
+            labels: [...Array(360).keys()], // Labels de 0 a 359 graus
+            datasets: [{
+                label: 'Função Seno',
+                data: [...Array(360).keys()].map(deg => Math.sin(deg * Math.PI / 180)), // Valores do seno para cada grau
+                fill: false,
+                borderColor: 'rgb(75, 192, 192)',
+                tension: 0.1
+            }]
+        };
+
+        // Configurações do gráfico
+        var config = {
+            type: 'line',
+            data: data,
+            options: {
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Graus'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Seno'
+                        }
+                    }
+                }
+            }
+        };
+
+        // Cria o gráfico
+        var myChart = new Chart(ctx, config);
+    </script>
+</body>
+</html>
