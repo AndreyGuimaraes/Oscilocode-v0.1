@@ -10,19 +10,25 @@
 #define ADS_CURRENT_ADDR 0x49
 
 // ADS1015 data sampling and handling 
-#define VECTOR_SIZE 300
+#define VECTOR_SIZE 130
 
 Adafruit_ADS1015 ads_voltage;
 Adafruit_ADS1015 ads_current;
 TwoWire ADSwire = TwoWire(0);
-int32_t oversample_amount = 5;
-int32_t voltage_output_array[VECTOR_SIZE];
-int32_t current_output_array[VECTOR_SIZE];
-int32_t voltage_results = 0;
+int16_t oversample_amount = 1;
+int16_t voltage_results = 0;
 int32_t current_results = 0;
 
-float voltage_multiplier = 99.8336F;
-float current_multiplier = 100.0F;
+typedef struct GraphData
+{
+  int16_t output_array[VECTOR_SIZE];
+  int64_t sample_time[VECTOR_SIZE]; //time in microseconds
+} GraphData;
+
+GraphData current_graph, voltage_graph;
+
+float voltage_multiplier = 1.0F;
+float current_multiplier = 1.0F;
 
 // ESP-to-ESP communication
 // TwoWire ESPWire = TwoWire(1);
@@ -44,10 +50,13 @@ void setup(void)
   ADSwire.setPins(ADS_I2C_SDA, ADS_I2C_SCL);
   ADSwire.setClock(ADS_I2C_SPEED);
   ads_voltage.setDataRate(RATE_ADS1015_3300SPS);
+  ads_current.setDataRate(RATE_ADS1015_3300SPS);
+  ads_voltage.setGain(GAIN_SIXTEEN);
+  ads_current.setGain(GAIN_SIXTEEN);
 
   if (!ads_voltage.begin(ADS_VOLTAGE_ADDR, &ADSwire))
   {
-    Serial.println("ADS CURRENT initialization - FAILURE");
+    Serial.println("ADS VOLTAGE initialization - FAILURE");
     while (1);
   } else {
     Serial.println("ADS VOLTAGE initialization - SUCCESS");
@@ -60,51 +69,56 @@ void setup(void)
   } else {
     Serial.println("ADS CURRENT initialization - SUCCESS");
   }
+
+  // ESP-TO-ESP SETUP
+  /* -----------------------------
+  --------------------------------
+  */
 }
 
 void loop(void)
 {
-  // Initialize voltage reading
-  Serial.println("VOLTAGE READING START");
+  // Initialize voltage and current reading
+  Serial.print("VOLTAGE + CURRENT RAW READING START ");
+  Serial.print("OVERSAMPLE = ");
+  Serial.println(oversample_amount);
   for (int j = 0; j < VECTOR_SIZE; j++)
   {
     voltage_results = 0;
-    for (int i = 0; i < oversample_amount; i++)
-    {
-      voltage_results = voltage_results + ads_voltage.readADC_Differential_0_1();
-    }
-    voltage_results = voltage_results / oversample_amount;
-    voltage_output_array[j] = voltage_results;
-  }
-  Serial.println("VOLTAGE READING FINISH");
-
-  // Initialize current reading
-  Serial.println("CURRENT READING START");
-  for (int j = 0; j < VECTOR_SIZE; j++)
-  {
     current_results = 0;
     for (int i = 0; i < oversample_amount; i++)
     {
+      voltage_results = voltage_results + ads_voltage.readADC_Differential_0_1();
       current_results = current_results + ads_current.readADC_Differential_0_1();
     }
+    voltage_results = voltage_results / oversample_amount;
     current_results = current_results / oversample_amount;
-    current_output_array[j] = current_results;
+
+    voltage_graph.output_array[j] = voltage_results;
+    voltage_graph.sample_time[j] = esp_timer_get_time();
+    current_graph.output_array[j] = current_results;
+    current_graph.sample_time[j] = esp_timer_get_time();
   }
-  Serial.println("CURRENT READING FINISH");
+  Serial.println("VOLTAGE + CURRENT RAW READING FINISH ");
+  Serial.print("OVERSAMPLE = ");
+  Serial.println(oversample_amount);
 
   // Print Voltage and Current values to serial
-  Serial.println("VOLTAGE READING PRINT");
+  Serial.println("VOLTAGE READING PRINTING...");
   for (int j = 0; j < VECTOR_SIZE; j++)
   {
-    Serial.print(voltage_output_array[j] * voltage_multiplier);
+    Serial.print(voltage_graph.output_array[j] * voltage_multiplier);
     Serial.print(";");
+    Serial.print(voltage_graph.sample_time[j]);
+  }
+  Serial.println(" ");
+  Serial.println("CURRENT READING PRINTING...");
+  for (int j = 0; j < VECTOR_SIZE; j++)
+  {
+    Serial.print(current_graph.output_array[j] * current_multiplier);
+    Serial.print(";");
+    Serial.print(current_graph.sample_time[j]);
   }
   Serial.println(" ");
   
-  Serial.println("CURRENT READING PRINT");
-  for (int j = 0; j < VECTOR_SIZE; j++)
-  {
-    Serial.print(current_output_array[j] * current_multiplier);
-    Serial.print(";");
-  }
 }
