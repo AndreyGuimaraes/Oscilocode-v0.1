@@ -108,16 +108,18 @@ void loop(void)
   for (int j = 0; j < VECTOR_SIZE; j++)
   {
     Serial.print(voltage_graph.output_array[j] * voltage_multiplier);
-    Serial.print(";");
+    Serial.print(" ");
     Serial.print(voltage_graph.sample_time[j]);
+    Serial.print(";")
   }
   Serial.println(" ");
   Serial.println("CURRENT READING PRINTING...");
   for (int j = 0; j < VECTOR_SIZE; j++)
   {
     Serial.print(current_graph.output_array[j] * current_multiplier);
-    Serial.print(";");
+    Serial.print(" ");
     Serial.print(current_graph.sample_time[j]);
+    Serial.print(";");
   }
   Serial.println(" ");
   
