@@ -1,54 +1,101 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gráfico de Função Seno</title>
-    <script src="chart.js"></script>
+    <title>Gráfico em Tempo Real</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        #chart-container {
+            width: 90%;
+            height: 80%;
+        }
+        canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+    </style>
 </head>
 <body>
-    <canvas id="myChart" width="400" height="400"></canvas>
+    <div id="chart-container">
+        <canvas id="myChart"></canvas>
+    </div>
 
+    <script src=./chart.js></script>
     <script>
-        // Cria um contexto de desenho no elemento canvas
-        var ctx = document.getElementById('myChart').getContext('2d');
-
-        // Define os dados para o gráfico
-        var data = {
-            labels: [...Array(360).keys()], // Labels de 0 a 359 graus
-            datasets: [{
-                label: 'Função Seno',
-                data: [...Array(360).keys()].map(deg => Math.sin(deg * Math.PI / 180)), // Valores do seno para cada grau
-                fill: false,
-                borderColor: 'rgb(75, 192, 192)',
-                tension: 0.1
-            }]
-        };
-
-        // Configurações do gráfico
-        var config = {
+        const ctx = document.getElementById('myChart').getContext('2d');
+        const myChart = new Chart(ctx, {
             type: 'line',
-            data: data,
+            data: {
+                labels: [], // X-axis labels will be time arrays
+                datasets: [
+                    {
+                        label: 'Voltage',
+                        data: [], // Y-axis data for voltage
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1,
+                        fill: false
+                    },
+                    {
+                        label: 'Current',
+                        data: [], // Y-axis data for current
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1,
+                        fill: false
+                    }
+                ]
+            },
             options: {
+                responsive: true,
+                maintainAspectRatio: false,
                 scales: {
                     x: {
+                        type: 'linear',
+                        position: 'bottom',
                         title: {
                             display: true,
-                            text: 'Graus'
+                            text: 'Time'
                         }
                     },
                     y: {
                         title: {
                             display: true,
-                            text: 'Seno'
+                            text: 'Value'
                         }
                     }
                 }
             }
+        });
+
+        const ws = new WebSocket('ws://192.148.4.1:81');
+
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            const voltageTime = data.voltageTime;
+            const voltageValue = data.voltageValue;
+            const currentTime = data.currentTime;
+            const currentValue = data.currentValue;
+
+            myChart.data.labels = voltageTime;
+            myChart.data.datasets[0].data = voltageTime.map((time, index) => ({ x: time, y: voltageValue[index] }));
+            myChart.data.datasets[1].data = currentTime.map((time, index) => ({ x: time, y: currentValue[index] }));
+
+            myChart.update();
         };
 
-        // Cria o gráfico
-        var myChart = new Chart(ctx, config);
+        ws.onopen = function() {
+            console.log('WebSocket is connected.');
+        };
+
+        ws.onclose = function() {
+            console.log('WebSocket is closed.');
+        };
     </script>
 </body>
 </html>
