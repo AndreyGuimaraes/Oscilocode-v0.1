@@ -33,6 +33,17 @@
       text-align: center;
       background-color: #f9f9f9;
     }
+
+    .control-container {
+      width: 80%;
+      display: flex;
+      justify-content: center;
+      margin-top: 20px;
+    }
+
+    .control-box {
+      padding: 10px;
+    }
   </style>
 </head>
 
@@ -47,11 +58,18 @@
     <div class="info-box" id="potencia-aparente">Potência Aparente: <span>0</span> VA</div>
     <div class="info-box" id="fator-potencia">Fator de Potência: <span>0</span></div>
   </div>
-  <script src=./chart.js></script>
+  <div class="control-container">
+    <div class="control-box">
+      <label for="triggerValueInput">Valor de disparo:</label>
+      <input type="number" id="triggerValueInput" value="30">
+      <button onclick="updateTriggerValue()">Atualizar</button>
+    </div>
+  </div>
+  <script src="./chart.js"></script>
   <script>
-    const triggerValue = 30
-    const maxLenght = 250
-    var offset = 0
+    var triggerValue = 30;
+    const maxLenght = 250;
+    var offset = 0;
     var websocket;
     window.addEventListener('load', onload);
     const ctx = document.getElementById('myChart').getContext('2d');
@@ -155,6 +173,15 @@
       let voltageTimes = cleanArray(chartData.voltage_time);
       let currentTimes = cleanArray(chartData.current_time);
 
+      // Atualizando os valores das caixas de informação
+      updateTensaoRMS(voltageValues);
+      updateCorrenteRMS(currentValues);
+      updateFrequencia(voltageTimes);
+      updatePotenciaAtiva(voltageValues, currentValues);
+      updatePotenciaReativa(voltageValues, currentValues);
+      updatePotenciaAparente(voltageValues, currentValues);
+      updateFatorPotencia(voltageValues, currentValues);
+
       // Truncando os arrays pelo menor tamanho
       const truncatedData = truncateArrays(voltageValues, currentValues, voltageTimes, currentTimes);
       voltageValues = truncatedData.voltageValues;
@@ -171,14 +198,6 @@
 
       myChart.update();
 
-      // Atualizando os valores das caixas de informação
-      updateTensaoRMS(voltageValues);
-      updateCorrenteRMS(currentValues);
-      updateFrequencia(voltageTimes);
-      updatePotenciaAtiva(voltageValues, currentValues);
-      updatePotenciaReativa(voltageValues, currentValues);
-      updatePotenciaAparente(voltageValues, currentValues);
-      updateFatorPotencia(voltageValues, currentValues);
     };
 
     function calculateRMS(values) {
@@ -248,6 +267,12 @@
       websocket.onclose = onClose;
       websocket.onmessage = onMessage;
     };
+
+    function updateTriggerValue() {
+      const inputValue = document.getElementById('triggerValueInput').value;
+      triggerValue = parseFloat(inputValue);
+      console.log('Trigger Value updated to:', triggerValue);
+    }
   </script>
 </body>
 
