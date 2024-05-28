@@ -20,7 +20,7 @@
 #define VOLTAGE_I2C_ADDR 0x48
 #define CURRENT_I2C_ADDR 0x49
 #define ADC_I2C_SPEED 800000U //800 kHz I2C
-#define SAMPLING_TIME_US 85000 //The amount of time that the adc will be read in microseconds
+#define SAMPLING_TIME_US 85000 //Sample window size
 #define VECTOR_SIZE 300 //Minimum vector size to fit each ADC data eg.: VECTOR_SIZE = 300 -> 300 voltage points, 300 current points.
 #define SYNC_PIN 17
 #define VOLTAGE_DRDY_PIN 23
@@ -36,7 +36,6 @@ bool voltage_data_ready = 0;
 bool current_data_ready = 0;
 
 //Wifi SSID variable
-std::string osciloname = "Osciloboy: ";
 char ssid_name[63];
 //Task handler for dual-core operation
 TaskHandle_t ADC_handler;

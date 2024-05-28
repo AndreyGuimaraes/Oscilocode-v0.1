@@ -1,101 +1,254 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gráfico em Tempo Real</title>
-    <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        #chart-container {
-            width: 90%;
-            height: 80%;
-        }
-        canvas {
-            width: 100% !important;
-            height: 100% !important;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Osciloboy UTFPR</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    canvas {
+      width: 80%;
+      height: 60%;
+    }
+
+    .info-container {
+      width: 80%;
+      display: flex;
+      justify-content: space-around;
+      margin-top: 20px;
+    }
+
+    .info-box {
+      border: 1px solid #ccc;
+      padding: 10px;
+      width: 20%;
+      text-align: center;
+      background-color: #f9f9f9;
+    }
+  </style>
 </head>
+
 <body>
-    <div id="chart-container">
-        <canvas id="myChart"></canvas>
-    </div>
+  <canvas id="myChart"></canvas>
+  <div class="info-container">
+    <div class="info-box" id="tensao-rms">Tensão RMS: <span>0</span> V</div>
+    <div class="info-box" id="corrente-rms">Corrente RMS: <span>0</span> A</div>
+    <div class="info-box" id="frequencia">Frequência: <span>0</span> Hz</div>
+    <div class="info-box" id="potencia-ativa">Potência Ativa: <span>0</span> W</div>
+    <div class="info-box" id="potencia-reativa">Potência Reativa: <span>0</span> var</div>
+    <div class="info-box" id="potencia-aparente">Potência Aparente: <span>0</span> VA</div>
+    <div class="info-box" id="fator-potencia">Fator de Potência: <span>0</span></div>
+  </div>
+  <script src=./chart.js></script>
+  <script>
+    const triggerValue = 30
+    const maxLenght = 250
+    var offset = 0
+    var websocket;
+    window.addEventListener('load', onload);
+    const ctx = document.getElementById('myChart').getContext('2d');
+    const data = {
+      labels: [],
+      datasets: [
+        {
+          label: 'Tensão',
+          data: [],
+          borderColor: 'rgba(255, 99, 132, 1)',
+          backgroundColor: 'rgba(255, 99, 132, 0.2)',
+          yAxisID: 'y-axis-1'
+        },
+        {
+          label: 'Corrente',
+          data: [],
+          borderColor: 'rgba(54, 162, 235, 1)',
+          backgroundColor: 'rgba(54, 162, 235, 0.2)',
+          yAxisID: 'y-axis-2'
+        }
+      ]
+    };
 
-    <script src=./chart.js></script>
-    <script>
-        const ctx = document.getElementById('myChart').getContext('2d');
-        const myChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [], // X-axis labels will be time arrays
-                datasets: [
-                    {
-                        label: 'Voltage',
-                        data: [], // Y-axis data for voltage
-                        borderColor: 'rgba(255, 99, 132, 1)',
-                        borderWidth: 1,
-                        fill: false
-                    },
-                    {
-                        label: 'Current',
-                        data: [], // Y-axis data for current
-                        borderColor: 'rgba(54, 162, 235, 1)',
-                        borderWidth: 1,
-                        fill: false
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        type: 'linear',
-                        position: 'bottom',
-                        title: {
-                            display: true,
-                            text: 'Time'
-                        }
-                    },
-                    y: {
-                        title: {
-                            display: true,
-                            text: 'Value'
-                        }
-                    }
-                }
+    const config = {
+      type: 'line',
+      data: data,
+      options: {
+        responsive: true,
+        animation: false,
+        scales: {
+          x: {
+            type: 'linear',
+            position: 'bottom'
+          },
+          'y-axis-1': {
+            type: 'linear',
+            position: 'left',
+            title: {
+              display: true,
+              text: 'Tensão (V)'
             }
-        });
+          },
+          'y-axis-2': {
+            type: 'linear',
+            position: 'right',
+            title: {
+              display: true,
+              text: 'Corrente (A)'
+            },
+            grid: {
+              drawOnChartArea: false
+            }
+          }
+        }
+      }
+    };
 
-        const ws = new WebSocket('ws://192.148.4.1:81');
+    const myChart = new Chart(ctx, config);
 
-        ws.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            const voltageTime = data.voltageTime;
-            const voltageValue = data.voltageValue;
-            const currentTime = data.currentTime;
-            const currentValue = data.currentValue;
+    function onload(event) {
+      initWebSocket();
+    };
 
-            myChart.data.labels = voltageTime;
-            myChart.data.datasets[0].data = voltageTime.map((time, index) => ({ x: time, y: voltageValue[index] }));
-            myChart.data.datasets[1].data = currentTime.map((time, index) => ({ x: time, y: currentValue[index] }));
+    function cleanArray(arr) {
+      let cleanedArray = arr.slice();
+      while (cleanedArray.length > 0 && cleanedArray[cleanedArray.length - 1] === 0) {
+        cleanedArray.pop();
+      }
+      return cleanedArray;
+    }
 
-            myChart.update();
-        };
+    function truncateArrays(voltageValues, currentValues, voltageTimes, currentTimes) {
+      const minLength = Math.min(voltageValues.length, currentValues.length, voltageTimes.length, currentTimes.length);
+      
+      for (let i = 0; i<minLength; i++){
+        if ((voltageValues[i] <= triggerValue) && (voltageValues[i+1] >= triggerValue)){
+          console.log(i + ": " + voltageValues[i])
+          offset = i;
+          return {
+            voltageValues: voltageValues.slice(i, maxLenght+i),
+            currentValues: currentValues.slice(i, maxLenght+i),
+            voltageTimes: voltageTimes.slice(i, maxLenght+i),
+            currentTimes: currentTimes.slice(i, maxLenght+i)
+          }
+        }
+      }
 
-        ws.onopen = function() {
-            console.log('WebSocket is connected.');
-        };
+      return {
+            voltageValues: voltageValues.slice(0, maxLenght),
+            currentValues: currentValues.slice(0, maxLenght),
+            voltageTimes: voltageTimes.slice(0, maxLenght),
+            currentTimes: currentTimes.slice(0, maxLenght)
+          }
+    }
+    
 
-        ws.onclose = function() {
-            console.log('WebSocket is closed.');
-        };
-    </script>
+    function updateChart(data) {
+      const chartData = JSON.parse(data);
+      let voltageValues = cleanArray(chartData.voltage_value);
+      let currentValues = cleanArray(chartData.current_value);
+      let voltageTimes = cleanArray(chartData.voltage_time);
+      let currentTimes = cleanArray(chartData.current_time);
+
+      // Truncando os arrays pelo menor tamanho
+      const truncatedData = truncateArrays(voltageValues, currentValues, voltageTimes, currentTimes);
+      voltageValues = truncatedData.voltageValues;
+      currentValues = truncatedData.currentValues;
+      voltageTimes = truncatedData.voltageTimes;
+      currentTimes = truncatedData.currentTimes;
+
+      // Supondo que os tempos sejam iguais para ambas as séries
+      myChart.data.labels = voltageTimes;
+
+      // Atualizando os dados do gráfico
+      myChart.data.datasets[0].data = voltageValues.map((value, index) => ({ x: voltageTimes[index]-offset, y: value }));
+      myChart.data.datasets[1].data = currentValues.map((value, index) => ({ x: currentTimes[index]-offset, y: value }));
+
+      myChart.update();
+
+      // Atualizando os valores das caixas de informação
+      updateTensaoRMS(voltageValues);
+      updateCorrenteRMS(currentValues);
+      updateFrequencia(voltageTimes);
+      updatePotenciaAtiva(voltageValues, currentValues);
+      updatePotenciaReativa(voltageValues, currentValues);
+      updatePotenciaAparente(voltageValues, currentValues);
+      updateFatorPotencia(voltageValues, currentValues);
+    };
+
+    function calculateRMS(values) {
+      const squareSum = values.reduce((sum, value) => sum + value * value, 0);
+      return Math.sqrt(squareSum / values.length);
+    }
+
+    function calculateFrequency(times) {
+      if (times.length < 2) return 0;
+      const period = (times[times.length - 1] - times[0]) / (times.length - 1);
+      return 1 / period;
+    }
+
+    function updateTensaoRMS(voltageValues) {
+      const rmsValue = calculateRMS(voltageValues);
+      document.getElementById('tensao-rms').querySelector('span').textContent = rmsValue.toFixed(2);
+    }
+
+    function updateCorrenteRMS(currentValues) {
+      const rmsValue = calculateRMS(currentValues);
+      document.getElementById('corrente-rms').querySelector('span').textContent = rmsValue.toFixed(2);
+    }
+
+    function updateFrequencia(times) {
+      const freqValue = calculateFrequency(times);
+      document.getElementById('frequencia').querySelector('span').textContent = freqValue.toFixed(2);
+    }
+
+    function updatePotenciaAtiva(voltageValues, currentValues) {
+      const activePower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
+      document.getElementById('potencia-ativa').querySelector('span').textContent = activePower.toFixed(2);
+    }
+
+    function updatePotenciaReativa(voltageValues, currentValues) {
+      const reactivePower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
+      document.getElementById('potencia-reativa').querySelector('span').textContent = reactivePower.toFixed(2);
+    }
+
+    function updatePotenciaAparente(voltageValues, currentValues) {
+      const apparentPower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
+      document.getElementById('potencia-aparente').querySelector('span').textContent = apparentPower.toFixed(2);
+    }
+
+    function updateFatorPotencia(voltageValues, currentValues) {
+      const activePower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
+      const apparentPower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
+      const powerFactor = activePower / apparentPower;
+      document.getElementById('fator-potencia').querySelector('span').textContent = powerFactor.toFixed(2);
+    }
+
+    function onOpen() {
+      console.log("Connected");
+    }
+
+    function onClose() {
+      console.log("Connection Closed");
+    }
+
+    function onMessage(event) {
+      updateChart(event.data);
+    }
+
+    function initWebSocket() {
+      console.log('Trying to open a WebSocket connection…');
+      websocket = new WebSocket('ws://192.168.4.1:81/');
+      websocket.onopen = onOpen;
+      websocket.onclose = onClose;
+      websocket.onmessage = onMessage;
+    };
+  </script>
 </body>
+
 </html>

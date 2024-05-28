@@ -16,14 +16,15 @@ WebSocketsServer webSocket = WebSocketsServer(81);
 WebSocketsClient client_ws;
 
 //Json helper object
-StaticJsonDocument<200> doc;
+StaticJsonDocument<200> doc_aux;
 
 // PROTOTYPES
-void ads_read_values();
+void ads_read_values(Chart_data *chart);
 void ads_send_sync();
 void ADC_Loop(void *pvParameters);
 void macStringToBytes(const char *macStr, uint8_t *macBytes);
 void send_data_to_MC(Chart_data *chart);
+void resetChartData(Chart_data* data);
 
 // CALLBACKS
 void onEspNowDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len){
@@ -75,12 +76,12 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lengt
     break;
   case WStype_TEXT:
     // Always receive JSON 
-    deserializeJson(doc, payload, length);
+    deserializeJson(doc_aux, payload, length);
 
       //If it is a new channel, receive mac address from browser
-      if (doc.containsKey("mac")) {
+      if (doc_aux.containsKey("mac")) {
         //Converts the JSON mac to uint8_t mac
-        const char *macStr = doc["mac"];
+        const char *macStr = doc_aux["mac"];
         uint8_t macBytes[6];
         macStringToBytes(macStr, macBytes);
 
@@ -105,13 +106,13 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lengt
           debug("ESP MODE SERVER MODE AFTER SERVER NOK\n");
         }
       }
-      else if (doc.containsKey("start")){
+      else if (doc_aux.containsKey("start")){
         currentState = ESP_SERVER_SAMPLING;
         debug("ESP MODE SERVER SAMPLING\n");
       }
       // else if (doc.containsKey())
 
-    doc.clear();
+    doc_aux.clear();
     break;
 
   case WStype_DISCONNECTED:
@@ -159,7 +160,6 @@ void setup()
   }
 
   // Configure ESP32 as an Access Point (AP)
-  osciloname = OSCILOBOY_NAME;
   WiFi.softAP(OSCILOBOY_NAME);
 
   // Get the IP address of the AP
@@ -231,11 +231,11 @@ void ADC_Loop(void *pvParameters)
         ads_send_sync();
         currentState = ESP_SERVER_RECEIVING_CLIENTS;
         debug("ESP MODE SERVER RECEIVING CLIENTS\n");
-        ads_read_values();
+        ads_read_values(&localData);
       break;
     
     case ESP_CLIENT_SAMPLING:
-        ads_read_values();
+        ads_read_values(&localData);
         currentState = ESP_CLIENT_SENDING;
         debug("ESP MODE CLIENT SENDING\n");
 
@@ -305,10 +305,14 @@ void ads_send_sync(){
   digitalWrite(SYNC_PIN, HIGH);
 }
 
-void ads_read_values()
+void ads_read_values(Chart_data *chart)
 {
   uint8_t voltage_count = 0;
   uint8_t current_count = 0;
+
+  //Guarantee that all data is 0 before populating
+  resetChartData(chart);
+
   int64_t read_start_time = esp_timer_get_time();
 
   while ((esp_timer_get_time() - read_start_time) < SAMPLING_TIME_US)
@@ -316,20 +320,21 @@ void ads_read_values()
     
     if (voltage_data_ready){
     voltage_data_ready = false;
-    localData.voltage_value[voltage_count] = ads_voltage.getResultWithRange(-2048, 2048);
-    localData.voltage_time[voltage_count] = esp_timer_get_time() - read_start_time;
+    chart->voltage_value[voltage_count] = ads_voltage.getResultWithRange(-2048, 2048);
+    chart->voltage_time[voltage_count] = esp_timer_get_time() - read_start_time;
     }
 
     if (current_data_ready){
     current_data_ready = false;
-    localData.current_time[current_count] = ads_current.getResultWithRange(-2048, 2048);
-    localData.current_time[current_count] = esp_timer_get_time() - read_start_time;
+    chart->current_time[current_count] = ads_current.getResultWithRange(-2048, 2048);
+    chart->current_time[current_count] = esp_timer_get_time() - read_start_time;
     }
   }
 }
 
-void send_data_to_MC(Chart_data *chart){
-  JsonDocument doc;
+void send_data_to_MC(Chart_data *chart)
+{
+  StaticJsonDocument<8192> doc;
 
   doc["chart_id"] = chart->chart_id;
   doc["voltage_gain"] = chart->voltage_gain;
@@ -338,15 +343,36 @@ void send_data_to_MC(Chart_data *chart){
   JsonArray currentArray = doc["current_value"].to<JsonArray>();
   JsonArray voltageTimeArray = doc["voltage_time"].to<JsonArray>();
   JsonArray currentTimeArray = doc["current_time"].to<JsonArray>();
-  for (int i = 0; i < VECTOR_SIZE; i++) {
+  for (int i = 0; i < VECTOR_SIZE; i++)
+  {
     voltageArray.add(chart->voltage_value[i]);
     currentArray.add(chart->current_value[i]);
     voltageTimeArray.add(chart->voltage_time[i]);
     currentTimeArray.add(chart->current_time[i]);
-
   }
-  char *jsonString;
-  serializeJson(doc, jsonString, sizeof(doc));
-  webSocket.sendTXT(main_client_id, jsonString);
-    
+  size_t jsonSize = measureJson(doc) + 1; // +1 para o terminador nulo
+  char *jsonString = (char *)malloc(jsonSize);
+
+  if (jsonString != nullptr)
+  {
+    // Serializa o JSON para a string alocada dinamicamente
+    size_t n = serializeJson(doc, jsonString, jsonSize);
+    jsonString[n] = '\0';
+    webSocket.sendTXT(main_client_id, jsonString);
+    free(jsonString); // Libera a memória alocada
+  }
+  else
+  {
+    Serial.println("Falha ao alocar memória para jsonString");
+  }
+}
+
+void resetChartData(Chart_data* data) {
+    data->chart_id = 0;
+    data->voltage_gain = 0;
+    data->current_type = 0;
+    memset(data->voltage_value, 0, sizeof(data->voltage_value));
+    memset(data->current_value, 0, sizeof(data->current_value));
+    memset(data->voltage_time, 0, sizeof(data->voltage_time));
+    memset(data->current_time, 0, sizeof(data->current_time));
 }
