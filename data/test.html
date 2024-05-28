@@ -129,7 +129,7 @@
       for (let i = 0; i<minLength; i++){
         if ((voltageValues[i] <= triggerValue) && (voltageValues[i+1] >= triggerValue)){
           console.log(i + ": " + voltageValues[i])
-          offset = i;
+          offset = voltageTimes[i];
           return {
             voltageValues: voltageValues.slice(i, maxLenght+i),
             currentValues: currentValues.slice(i, maxLenght+i),

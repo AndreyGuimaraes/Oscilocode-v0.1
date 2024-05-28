@@ -88,8 +88,8 @@ void fill_data(Chart_data *chart)
     float time = i / sample_rate;
     chart->voltage_value[i] = 100 * sin(2 * PI * frequency * time + random_offset);
     chart->current_value[i] = 20 * sin(2 * PI * frequency * time + random_offset + phase_offset);
-    chart->voltage_time[i] = i; // Tempo de tensão
-    chart->current_time[i] = i; // Tempo de corrente
+    chart->voltage_time[i] = 2*i; // Tempo de tensão
+    chart->current_time[i] = 2*i; // Tempo de corrente
   }
 }
 
