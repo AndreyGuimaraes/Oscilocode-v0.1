@@ -43,7 +43,7 @@ void onHomepageRequest(AsyncWebServerRequest *request) {
   IPAddress remote_ip = request->client()->remoteIP();
   Serial.println("[" + remote_ip.toString() +
                   "] HTTP GET request of " + request->url());
-  request->send(SPIFFS, "/index.html", "text/html");
+  request->send(SPIFFS, "/test.html", "text/html");
 }
 
 void onChartlibRequest(AsyncWebServerRequest *request) {
@@ -123,7 +123,7 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lengt
     Serial.printf("[%u] Connected\n", num);
     if(currentState == AWAITING_CONNECTION){ //First connection possible is with cellphone
       main_client_id = num;
-      currentState = ESP_SERVER_MODE;
+      currentState = ESP_SERVER_SAMPLING;
       debug("ESP MODE SERVER MODE\n");
     }
     else if (currentState == ESP_SERVER_PAIRED){
@@ -205,7 +205,7 @@ void setup()
   ads_voltage.setConvRate(ADS1015_3300_SPS);
   ads_voltage.setAlertPinMode(ADS1015_ASSERT_AFTER_1);
   ads_voltage.setMeasureMode(ADS1015_CONTINUOUS);
-  ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
+  ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
 
   // Current reading initial config
   ads_current.setCompareChannels(ADS1015_COMP_0_1);
@@ -229,9 +229,10 @@ void ADC_Loop(void *pvParameters)
     {
     case ESP_SERVER_SAMPLING:
         ads_send_sync();
-        currentState = ESP_SERVER_RECEIVING_CLIENTS;
-        debug("ESP MODE SERVER RECEIVING CLIENTS\n");
+        // currentState = ESP_SERVER_RECEIVING_CLIENTS;
+        // debug("ESP MODE SERVER RECEIVING CLIENTS\n");
         ads_read_values(&localData);
+        send_data_to_MC(&localData);
       break;
     
     case ESP_CLIENT_SAMPLING:

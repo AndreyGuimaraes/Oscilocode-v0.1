@@ -22,7 +22,7 @@
 #define ADC_I2C_SPEED 800000U //800 kHz I2C
 #define SAMPLING_TIME_US 85000 //Sample window size
 #define VECTOR_SIZE 300 //Minimum vector size to fit each ADC data eg.: VECTOR_SIZE = 300 -> 300 voltage points, 300 current points.
-#define SYNC_PIN 17
+#define SYNC_PIN 16
 #define VOLTAGE_DRDY_PIN 23
 #define CURRENT_DRDY_PIN 17
 
@@ -32,8 +32,8 @@ ADS1015_WE ads_voltage = ADS1015_WE(&AdcI2C, VOLTAGE_I2C_ADDR);
 ADS1015_WE ads_current = ADS1015_WE(&AdcI2C, CURRENT_I2C_ADDR);
 float voltage_multiplier = 108.0F;
 float current_multiplier = 1.0F;
-bool voltage_data_ready = 0;
-bool current_data_ready = 0;
+volatile bool voltage_data_ready = 0;
+volatile bool current_data_ready = 0;
 
 //Wifi SSID variable
 char ssid_name[63];

@@ -67,9 +67,15 @@
   </div>
   <script src="./chart.js"></script>
   <script>
-    var triggerValue = 30;
-    const maxLenght = 250;
-    var offset = 0;
+    let triggerValue = 100;
+    let triggerTipe = "AC";
+    let voltageMultiplier = 108;
+    let currentMultiplier = 100;
+    const max_scale_us = 50000;
+    const maxLenght = 180;
+    let voltage_offset = 0;
+    let current_offset = 0;
+
     var websocket;
     window.addEventListener('load', onload);
     const ctx = document.getElementById('myChart').getContext('2d');
@@ -102,7 +108,13 @@
         scales: {
           x: {
             type: 'linear',
-            position: 'bottom'
+            position: 'bottom',
+            title: {
+              display: true,
+              text: 'Tempo (uS)'
+            },
+            min: 0,
+            max: 0
           },
           'y-axis-1': {
             type: 'linear',
@@ -141,63 +153,70 @@
       return cleanedArray;
     }
 
-    function truncateArrays(voltageValues, currentValues, voltageTimes, currentTimes) {
-      const minLength = Math.min(voltageValues.length, currentValues.length, voltageTimes.length, currentTimes.length);
-      
-      for (let i = 0; i<minLength; i++){
-        if ((voltageValues[i] <= triggerValue) && (voltageValues[i+1] >= triggerValue)){
-          console.log(i + ": " + voltageValues[i])
-          offset = voltageTimes[i];
-          return {
-            voltageValues: voltageValues.slice(i, maxLenght+i),
-            currentValues: currentValues.slice(i, maxLenght+i),
-            voltageTimes: voltageTimes.slice(i, maxLenght+i),
-            currentTimes: currentTimes.slice(i, maxLenght+i)
+    function triggerSet(voltageValues, triggerTipe) {
+      //Verify if the value and the next one and try to find trigger value
+      if (triggerTipe == "AC") {
+        for (let i = 0; i < maxLenght; i++) {
+          if ((voltageValues[i] <= triggerValue) && (voltageValues[i + 1] >= triggerValue)) {
+            return i;
           }
         }
       }
+      //Verify if the value is above or below trigger values (for negative voltage)
+      else if (triggerTipe == "DC") {
+        for (let i = 0; i < maxLenght; i++) {
+          if ((voltageValues[i] < -triggerValue) || (voltageValues[i] > triggerValue)) {
+            return i;
+          }
+        }
+      }
+      //If none are found, return 0
+      return 0;
+    }
+
+    function truncateArrays(voltageValues, currentValues, voltageTimes, currentTimes) {
+      let triggerPos = triggerSet(voltageValues, triggerTipe);
+      voltage_offset = voltageTimes[i];
+      current_offset = currentTimes[i];
 
       return {
-            voltageValues: voltageValues.slice(0, maxLenght),
-            currentValues: currentValues.slice(0, maxLenght),
-            voltageTimes: voltageTimes.slice(0, maxLenght),
-            currentTimes: currentTimes.slice(0, maxLenght)
-          }
+        voltageValues: voltageValues.slice(i, maxLenght + i),
+        currentValues: currentValues.slice(i, maxLenght + i),
+        voltageTimes: voltageTimes.slice(i, maxLenght + i),
+        currentTimes: currentTimes.slice(i, maxLenght + i)
+      }
     }
-    
 
     function updateChart(data) {
       const chartData = JSON.parse(data);
-      let voltageValues = cleanArray(chartData.voltage_value);
-      let currentValues = cleanArray(chartData.current_value);
+      let voltageValues = cleanArray(chartData.voltage_value)*voltageMultiplier;
+      let currentValues = cleanArray(chartData.current_value)*currentMultiplier;
       let voltageTimes = cleanArray(chartData.voltage_time);
       let currentTimes = cleanArray(chartData.current_time);
 
       // Atualizando os valores das caixas de informação
       updateTensaoRMS(voltageValues);
       updateCorrenteRMS(currentValues);
-      updateFrequencia(voltageTimes);
+      updateFrequencia(voltageTimes, voltageValues);
       updatePotenciaAtiva(voltageValues, currentValues);
       updatePotenciaReativa(voltageValues, currentValues);
       updatePotenciaAparente(voltageValues, currentValues);
       updateFatorPotencia(voltageValues, currentValues);
 
-      // Truncando os arrays pelo menor tamanho
-      const truncatedData = truncateArrays(voltageValues, currentValues, voltageTimes, currentTimes);
+      // Truncando os arrays para um tamanho fixo
+      const truncatedData = truncateArrays(chartData.voltage_value*voltageMultiplier, chartData.current_value*currentMultiplier, chartData.voltage_time, chartData.current_time);
       voltageValues = truncatedData.voltageValues;
       currentValues = truncatedData.currentValues;
       voltageTimes = truncatedData.voltageTimes;
       currentTimes = truncatedData.currentTimes;
 
-      // Supondo que os tempos sejam iguais para ambas as séries
-      myChart.data.labels = voltageTimes;
+      myChart.config.options.scales.x.max = max_scale_us;
 
       // Atualizando os dados do gráfico
-      myChart.data.datasets[0].data = voltageValues.map((value, index) => ({ x: voltageTimes[index]-offset, y: value }));
-      myChart.data.datasets[1].data = currentValues.map((value, index) => ({ x: currentTimes[index]-offset, y: value }));
+      myChart.data.datasets[0].data = voltageValues.map((value, index) => ({ x: voltageTimes[index] - voltage_offset, y: value }));
+      myChart.data.datasets[1].data = currentValues.map((value, index) => ({ x: currentTimes[index] - current_offset, y: value }));
 
       myChart.update();
-
     };
 
     function calculateRMS(values) {
@@ -205,10 +224,41 @@
       return Math.sqrt(squareSum / values.length);
     }
 
-    function calculateFrequency(times) {
-      if (times.length < 2) return 0;
-      const period = (times[times.length - 1] - times[0]) / (times.length - 1);
-      return 1 / period;
+    function calculateFrequency(times, values) {
+      if (times.length < 2) {
+        return NaN; // Not enough samples to calculate frequency
+      }
+
+      let periods = [];
+      let previousCrossingTime = null;
+      let crossingUp = false;
+
+      for (let i = 1; i < times.length; i++) {
+        // Look for zero crossings in one direction only
+        if ((values[i - 1] <= 0 && values[i] > 0) || (values[i - 1] >= 0 && values[i] < 0)) {
+          if (!crossingUp) {
+            // Zero crossing detected
+            if (previousCrossingTime !== null) {
+              const period = times[i] - previousCrossingTime;
+              periods.push(period);
+            }
+            previousCrossingTime = times[i];
+            crossingUp = true;
+          } else {
+            crossingUp = false;
+          }
+        }
+      }
+
+      if (periods.length === 0) {
+        return NaN; // No zero crossings found
+      }
+
+      const averagePeriod = periods.reduce((sum, period) => sum + period, 0) / periods.length;
+      const averagePeriodInSeconds = averagePeriod / 1e6; // Convert period to seconds
+
+      const frequency = 1 / averagePeriodInSeconds; // Frequency in Hz
+      return frequency;
     }
 
     function updateTensaoRMS(voltageValues) {
@@ -221,8 +271,8 @@
       document.getElementById('corrente-rms').querySelector('span').textContent = rmsValue.toFixed(2);
     }
 
-    function updateFrequencia(times) {
-      const freqValue = calculateFrequency(times);
+    function updateFrequencia(times, values) {
+      const freqValue = calculateFrequency(times, values);
       document.getElementById('frequencia').querySelector('span').textContent = freqValue.toFixed(2);
     }
 

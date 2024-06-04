@@ -168,6 +168,7 @@
 
     function updateChart(data) {
       const chartData = JSON.parse(data);
+      console.log(data);
       let voltageValues = cleanArray(chartData.voltage_value);
       let currentValues = cleanArray(chartData.current_value);
       let voltageTimes = cleanArray(chartData.voltage_time);
@@ -183,7 +184,7 @@
       updateFatorPotencia(voltageValues, currentValues);
 
       // Truncando os arrays pelo menor tamanho
-      const truncatedData = truncateArrays(voltageValues, currentValues, voltageTimes, currentTimes);
+      const truncatedData = truncateArrays(chartData.voltage_value, chartData.current_value, chartData.voltage_time, chartData.current_time);
       voltageValues = truncatedData.voltageValues;
       currentValues = truncatedData.currentValues;
       voltageTimes = truncatedData.voltageTimes;
