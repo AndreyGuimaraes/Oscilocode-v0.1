@@ -67,10 +67,11 @@
   </div>
   <script src="./chart.js"></script>
   <script>
-    let triggerValue = 100;
+    //DEFINITIONS -------------------------------------
+    let triggerValue = 150;
     let triggerTipe = "AC";
-    let voltageMultiplier = 108;
-    let currentMultiplier = 100;
+    let voltageMultiplier = 0.101123595;
+    let currentMultiplier = 0.25;
     const max_scale_us = 50000;
     const maxLenght = 180;
     let voltage_offset = 0;
@@ -162,35 +163,29 @@
           }
         }
       }
-      //Verify if the value is above or below trigger values (for negative voltage)
+      //Verify if trigger is set to DC and don't trigger in this case
       else if (triggerTipe == "DC") {
-        for (let i = 0; i < maxLenght; i++) {
-          if ((voltageValues[i] < -triggerValue) || (voltageValues[i] > triggerValue)) {
-            return i;
-          }
-        }
+        return 0;
       }
-      //If none are found, return 0
-      return 0;
     }
 
     function truncateArrays(voltageValues, currentValues, voltageTimes, currentTimes) {
       let triggerPos = triggerSet(voltageValues, triggerTipe);
-      voltage_offset = voltageTimes[i];
-      current_offset = currentTimes[i];
+      voltage_offset = voltageTimes[triggerPos];
+      current_offset = currentTimes[triggerPos];
 
       return {
-        voltageValues: voltageValues.slice(i, maxLenght + i),
-        currentValues: currentValues.slice(i, maxLenght + i),
-        voltageTimes: voltageTimes.slice(i, maxLenght + i),
-        currentTimes: currentTimes.slice(i, maxLenght + i)
+        voltageValues: voltageValues.slice(triggerPos, maxLenght + triggerPos),
+        currentValues: currentValues.slice(triggerPos, maxLenght + triggerPos),
+        voltageTimes: voltageTimes.slice(triggerPos, maxLenght + triggerPos),
+        currentTimes: currentTimes.slice(triggerPos, maxLenght + triggerPos)
       }
     }
 
     function updateChart(data) {
       const chartData = JSON.parse(data);
-      let voltageValues = cleanArray(chartData.voltage_value)*voltageMultiplier;
-      let currentValues = cleanArray(chartData.current_value)*currentMultiplier;
+      let voltageValues = cleanArray(chartData.voltage_value).map(function (x) { return x * voltageMultiplier });
+      let currentValues = cleanArray(chartData.current_value).map(function (x) { return x * currentMultiplier });
       let voltageTimes = cleanArray(chartData.voltage_time);
       let currentTimes = cleanArray(chartData.current_time);
 
@@ -204,7 +199,7 @@
       updateFatorPotencia(voltageValues, currentValues);
 
       // Truncando os arrays para um tamanho fixo
-      const truncatedData = truncateArrays(chartData.voltage_value*voltageMultiplier, chartData.current_value*currentMultiplier, chartData.voltage_time, chartData.current_time);
+      const truncatedData = truncateArrays(chartData.voltage_value, chartData.current_value, chartData.voltage_time, chartData.current_time);
       voltageValues = truncatedData.voltageValues;
       currentValues = truncatedData.currentValues;
       voltageTimes = truncatedData.voltageTimes;
@@ -213,8 +208,8 @@
       myChart.config.options.scales.x.max = max_scale_us;
 
       // Atualizando os dados do gráfico
-      myChart.data.datasets[0].data = voltageValues.map((value, index) => ({ x: voltageTimes[index] - voltage_offset, y: value }));
-      myChart.data.datasets[1].data = currentValues.map((value, index) => ({ x: currentTimes[index] - current_offset, y: value }));
+      myChart.data.datasets[0].data = voltageValues.map((value, index) => ({ x: voltageTimes[index] - voltage_offset, y: value * voltageMultiplier }));
+      myChart.data.datasets[1].data = currentValues.map((value, index) => ({ x: currentTimes[index] - current_offset, y: value * currentMultiplier }));
 
       myChart.update();
     };
@@ -263,39 +258,39 @@
 
     function updateTensaoRMS(voltageValues) {
       const rmsValue = calculateRMS(voltageValues);
-      document.getElementById('tensao-rms').querySelector('span').textContent = rmsValue.toFixed(2);
+      document.getElementById('tensao-rms').querySelector('span').textContent = rmsValue.toFixed(3);
     }
 
     function updateCorrenteRMS(currentValues) {
       const rmsValue = calculateRMS(currentValues);
-      document.getElementById('corrente-rms').querySelector('span').textContent = rmsValue.toFixed(2);
+      document.getElementById('corrente-rms').querySelector('span').textContent = rmsValue.toFixed(3);
     }
 
     function updateFrequencia(times, values) {
       const freqValue = calculateFrequency(times, values);
-      document.getElementById('frequencia').querySelector('span').textContent = freqValue.toFixed(2);
+      document.getElementById('frequencia').querySelector('span').textContent = freqValue.toFixed(3);
     }
 
     function updatePotenciaAtiva(voltageValues, currentValues) {
       const activePower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
-      document.getElementById('potencia-ativa').querySelector('span').textContent = activePower.toFixed(2);
+      document.getElementById('potencia-ativa').querySelector('span').textContent = activePower.toFixed(3);
     }
 
     function updatePotenciaReativa(voltageValues, currentValues) {
       const reactivePower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
-      document.getElementById('potencia-reativa').querySelector('span').textContent = reactivePower.toFixed(2);
+      document.getElementById('potencia-reativa').querySelector('span').textContent = reactivePower.toFixed(3);
     }
 
     function updatePotenciaAparente(voltageValues, currentValues) {
       const apparentPower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
-      document.getElementById('potencia-aparente').querySelector('span').textContent = apparentPower.toFixed(2);
+      document.getElementById('potencia-aparente').querySelector('span').textContent = apparentPower.toFixed(3);
     }
 
     function updateFatorPotencia(voltageValues, currentValues) {
       const activePower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
       const apparentPower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
       const powerFactor = activePower / apparentPower;
-      document.getElementById('fator-potencia').querySelector('span').textContent = powerFactor.toFixed(2);
+      document.getElementById('fator-potencia').querySelector('span').textContent = powerFactor.toFixed(3);
     }
 
     function onOpen() {

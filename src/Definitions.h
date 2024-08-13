@@ -3,6 +3,13 @@
 #include <WiFi.h>
 #include <esp_now.h>
 
+// ads.setGain(GAIN_TWOTHIRDS);  // 2/3x gain  +/- 6.144V  1 bit = 3mV
+// ads.setGain(GAIN_ONE);        // 1x gain    +/- 4.096V  1 bit = 2mV    
+// ads.setGain(GAIN_TWO);        // 2x gain    +/- 2.048V  1 bit = 1mV   
+// ads.setGain(GAIN_FOUR);       // 4x gain    +/- 1.024V  1 bit = 0.5mV
+// ads.setGain(GAIN_EIGHT);      // 8x gain    +/- 0.512V  1 bit = 0.25mV
+// ads.setGain(GAIN_SIXTEEN);    // 16x gain   +/- 0.256V  1 bit = 0.125mV
+
 //Debug Mode on or off
 #define DEBUG
 #ifdef DEBUG
@@ -30,8 +37,6 @@
 TwoWire AdcI2C = TwoWire(0);
 ADS1015_WE ads_voltage = ADS1015_WE(&AdcI2C, VOLTAGE_I2C_ADDR);
 ADS1015_WE ads_current = ADS1015_WE(&AdcI2C, CURRENT_I2C_ADDR);
-float voltage_multiplier = 108.0F;
-float current_multiplier = 1.0F;
 volatile bool voltage_data_ready = 0;
 volatile bool current_data_ready = 0;
 

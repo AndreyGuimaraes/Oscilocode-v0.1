@@ -205,13 +205,13 @@ void setup()
   ads_voltage.setConvRate(ADS1015_3300_SPS);
   ads_voltage.setAlertPinMode(ADS1015_ASSERT_AFTER_1);
   ads_voltage.setMeasureMode(ADS1015_CONTINUOUS);
-  ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
+  ads_voltage.setVoltageRange_mV(ADS1015_RANGE_4096);
 
   // Current reading initial config
   ads_current.setCompareChannels(ADS1015_COMP_0_1);
   ads_current.setConvRate(ADS1015_3300_SPS);
   ads_current.setMeasureMode(ADS1015_CONTINUOUS);
-  ads_current.setVoltageRange_mV(ADS1015_RANGE_0256);
+  ads_current.setVoltageRange_mV(ADS1015_RANGE_0512);
 
   //Create a new task to handle ADC readings in a separated core
   xTaskCreatePinnedToCore(ADC_Loop, "ADC_Handler", 10000, NULL, 1, &ADC_handler, 0);
