@@ -147,7 +147,7 @@ void ads_read_values(Chart_data *chart)
 //   }
 // }
 
-//Function responsible for sending data to the server
+//Sends data to the server
 //Converts the readings into a Json file and then send via WebSocket
 void send_data_to_MC(Chart_data *chart)
 {
@@ -185,7 +185,7 @@ void send_data_to_MC(Chart_data *chart)
   }
 }
 
-//Function to startup voltage and current in default configurations
+//Function to startup ADC voltage and current in default configurations
 void ads_initial_config(ADS1015_WE *ads){
   if (!ads->init(true)) // true is necessary to configure lib for ADS1015 instead of ADS1115
   {
