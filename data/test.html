@@ -12,65 +12,136 @@
       align-items: center;
       height: 100vh;
       margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
     }
 
     canvas {
-      width: 80%;
-      height: 60%;
+      width: 90%;
+      height: 65%;
+      margin-top: 20px;
     }
 
     .info-container {
-      width: 80%;
+      width: 90%;
       display: flex;
-      justify-content: space-around;
-      margin-top: 20px;
+      justify-content: space-between;
+      margin-top: 5px;
+      flex-wrap: wrap;
+      gap: 2px;
+      /* Reduce space between info boxes */
     }
 
     .info-box {
-      border: 1px solid #ccc;
-      padding: 10px;
-      width: 20%;
+      background-color: #ffffff;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      padding: 6px;
+      /* Reduced padding */
+      width: 13%;
       text-align: center;
-      background-color: #f9f9f9;
+      margin: 0;
+      font-size: 12px;
+      transition: transform 0.3s ease;
+    }
+
+    .info-box:hover {
+      transform: translateY(-3px);
     }
 
     .control-container {
-      width: 80%;
+      width: 90%;
       display: flex;
-      justify-content: center;
-      margin-top: 20px;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      margin-top: 10px;
     }
 
     .control-box {
-      padding: 10px;
+      padding: 8px;
+      flex: 1 1 calc(20% - 10px);
+      box-sizing: border-box;
+      text-align: center;
+      background-color: #fff;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      margin: 5px;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      /* Center elements horizontally */
+      justify-content: center;
+      /* Center elements vertically */
+    }
+
+    .control-box label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: bold;
+      color: #333;
+      font-size: 10px;
+    }
+
+    .control-box input,
+    .control-box select {
+      width: 80%;
+      padding: 6px;
+      margin-bottom: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 10px;
+    }
+
+    .control-box button {
+      width: 80%;
+      padding: 6px;
+      border: none;
+      border-radius: 4px;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+      font-size: 10px;
+      margin-top: auto;
+      margin-bottom: auto;
+      /* Ensure the button is centered vertically */
+      text-align: center;
+    }
+
+    .control-box button:hover {
+      background-color: #0056b3;
+    }
+
+    .control-box.play-pause button {
+      width: 100px;
+      /* Make the button larger */
+      padding: 12px;
+      font-size: 14px;
+      background-color: #28a745;
+    }
+
+    .control-box.play-pause button:hover {
+      background-color: #218838;
     }
   </style>
 </head>
 
-<!-- Body  -->
-
 <body>
+  <!-- Control Panel -->
   <div class="control-container">
-    <!-- Control Play or Pause status -->
-    <div class="control-box">
+    <div class="control-box play-pause">
       <button onclick="togglePlayPause()">Play/Pause</button>
     </div>
-
-    <!-- Trigger Value Control -->
     <div class="control-box">
       <label for="triggerValueInput">Valor de disparo:</label>
       <input type="number" id="triggerValueInput" value="1">
       <button onclick="updateTriggerValue()">Atualizar</button>
     </div>
-
-    <!-- Amount of datasets -->
     <div class="control-box">
       <label for="datasetCountInput">Conjuntos de Dados:</label>
       <input type="number" id="datasetCountInput" value="1" min="1" max="3">
       <button onclick="updateDatasetCount()">Atualizar</button>
     </div>
-
-    <!-- Let the user select Voltage and Current max values -->
     <div class="control-box">
       <label for="voltageSelect">Escala de Tensão:</label>
       <select id="voltageSelect" onchange="setVoltageRange()">
@@ -86,10 +157,12 @@
       <select id="currentSelect" onchange="setCurrentRange()">
         <option value="uA">uA</option>
         <option value="mA">mA</option>
-        <option value="A" select>A</option>
+        <option value="A" selected>A</option>
       </select>
     </div>
   </div>
+
+  <!-- Information Display -->
   <div class="info-container">
     <div class="info-box" id="tensao-rms">Tensão RMS: <span>0</span> V</div>
     <div class="info-box" id="corrente-rms">Corrente RMS: <span>0</span> A</div>
@@ -99,7 +172,10 @@
     <div class="info-box" id="potencia-aparente">Potência Aparente: <span>0</span> VA</div>
     <div class="info-box" id="fator-potencia">Fator de Potência: <span>0</span></div>
   </div>
+
+  <!-- Graph Display -->
   <canvas id="myChart"></canvas>
+
   <!-- Local library import -->
   <script src="./chart.js"></script>
 
@@ -111,6 +187,7 @@
     const maxTriggerLenght = 180; //maximum number of points to try to trigger
     let triggerType = "AC"; // Default trigger type
     let selectedVoltage = "250V"
+    let selectedCurrent = "A"
 
 
     let voltageMultiplier = 1;
@@ -348,6 +425,13 @@
 
     function setVoltageRange() {
       const voltageDropdown = document.getElementById("voltageSelect");
+      selectedVoltage = voltageDropdown.value;
+      // Handle the selected voltage
+      console.log("Voltage set to:", selectedVoltage);
+    }
+
+    function setCurrentRange() {
+      const voltageDropdown = document.getElementById("currentSelect");
       selectedVoltage = voltageDropdown.value;
       // Handle the selected voltage
       console.log("Voltage set to:", selectedVoltage);
