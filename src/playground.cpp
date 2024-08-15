@@ -53,19 +53,19 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lengt
   case WStype_TEXT:
     // Convert payload to a string and print it
     if (!strcmp("25V", (char *)payload)){
-      // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
+      ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
       debug("Voltage 25V\n");
     }else if(!strcmp("50V", (char *)payload)){
-      // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0512);
+      ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0512);
       debug("Voltage 50V\n");
     }else if(!strcmp("100V", (char *)payload)){
-      // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_1024);
+      ads_voltage.setVoltageRange_mV(ADS1015_RANGE_1024);
       debug("Voltage 100V\n");
     }else if(!strcmp("200V", (char *)payload)){
-      // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
+      ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
       debug("Voltage 200V\n");
     }else if(!strcmp("250V", (char *)payload)){
-      // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
+      ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
       debug("Voltage 250V\n");
     }else{
       //verify other cases
@@ -237,8 +237,7 @@ void ads_initial_config(ADS1015_WE *ads)
   if (!ads->init(true)) // true is necessary to configure lib for ADS1015 instead of ADS1115
   {
     Serial.println("ADS initialization - FAILURE");
-    while (1)
-      ;
+    while (1);
   }
   else
   {
@@ -287,14 +286,14 @@ void setup()
   network_initialize();
 
   // ------------------ ADC initialization ----------------------
-  // AdcI2C.begin(ADC_I2C_SDA_PIN, ADC_I2C_SCL_PIN, ADC_I2C_SPEED);
+  AdcI2C.begin(ADC_I2C_SDA_PIN, ADC_I2C_SCL_PIN, ADC_I2C_SPEED);
 
   // Voltage and current startup and initial config
-  // ads_initial_config(&ads_voltage);
-  // ads_initial_config(&ads_current);
+  ads_initial_config(&ads_voltage);
+  ads_initial_config(&ads_current);
 
   // -------- Voltage Ranges _initial_ Definition --------------
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_4096);
+  ads_voltage.setVoltageRange_mV(ADS1015_RANGE_4096);
   // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
   // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_1024);
   // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0512);
@@ -305,13 +304,13 @@ void setup()
   // ads_current.setVoltageRange_mV(ADS1015_RANGE_2048);
   // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_1024);
   // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0512);
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
+  ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
 
   // Pin definitions and interrupts for ADC
-  // pinMode(VOLTAGE_DRDY_PIN, INPUT_PULLUP);
-  // pinMode(CURRENT_DRDY_PIN, INPUT_PULLUP);
-  // attachInterrupt(digitalPinToInterrupt(VOLTAGE_DRDY_PIN), onVoltageDrdy, FALLING);
-  // attachInterrupt(digitalPinToInterrupt(CURRENT_DRDY_PIN), onCurrentDrdy, FALLING);
+  pinMode(VOLTAGE_DRDY_PIN, INPUT_PULLUP);
+  pinMode(CURRENT_DRDY_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(VOLTAGE_DRDY_PIN), onVoltageDrdy, FALLING);
+  attachInterrupt(digitalPinToInterrupt(CURRENT_DRDY_PIN), onCurrentDrdy, FALLING);
 
   Serial.println("Setup Finalizado");
   delay(500);
@@ -320,11 +319,11 @@ void setup()
 void loop()
 {
   //--- Test only functions
-  fill_data(&charts[0], 1);
-  fill_data(&charts[1], 2);
+  // fill_data(&charts[0], 1);
+  // fill_data(&charts[1], 2);
   //--- Test only functions
 
-  // ads_read_values(&charts[0]);
-  send_data_to_MC(charts, 2);
+  ads_read_values(&charts[0]);
+  send_data_to_MC(charts, 1);
   webSocket.loop();
 }
