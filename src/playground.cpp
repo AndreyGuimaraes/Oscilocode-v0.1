@@ -51,17 +51,25 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lengt
   switch (type)
   {
   case WStype_TEXT:
-    // Always receive JSON
-    // deserializeJson(doc, payload, length);
-
-    // if (doc.containsKey("start"))
-    // {
-    //   currentState = ESP_SERVER_SAMPLING;
-    //   debug("ESP MODE SERVER SAMPLING\n");
-    // }
-    // // else if (doc.containsKey())
-
-    // doc.clear();
+    // Convert payload to a string and print it
+    if (!strcmp("25V", (char *)payload)){
+      // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
+      debug("Voltage 25V\n");
+    }else if(!strcmp("50V", (char *)payload)){
+      // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0512);
+      debug("Voltage 50V\n");
+    }else if(!strcmp("100V", (char *)payload)){
+      // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_1024);
+      debug("Voltage 100V\n");
+    }else if(!strcmp("200V", (char *)payload)){
+      // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
+      debug("Voltage 200V\n");
+    }else if(!strcmp("250V", (char *)payload)){
+      // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
+      debug("Voltage 250V\n");
+    }else{
+      //verify other cases
+    }
     break;
 
   case WStype_DISCONNECTED:
@@ -285,19 +293,19 @@ void setup()
   // ads_initial_config(&ads_voltage);
   // ads_initial_config(&ads_current);
 
-  // -------- Voltage Ranges Definition --------------
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0512);
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_1024);
+  // -------- Voltage Ranges _initial_ Definition --------------
+  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_4096);
   // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_4096);
-
-  // -------- Current Ranges Definition -------------
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0512);
   // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_1024);
-  // ads_current.setVoltageRange_mV(ADS1015_RANGE_2048);
+  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0512);
+  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
+
+  // -------- Current Ranges Definition (always remains the same) -------------
   // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_4096);
+  // ads_current.setVoltageRange_mV(ADS1015_RANGE_2048);
+  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_1024);
+  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0512);
+  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
 
   // Pin definitions and interrupts for ADC
   // pinMode(VOLTAGE_DRDY_PIN, INPUT_PULLUP);
@@ -315,7 +323,6 @@ void loop()
   fill_data(&charts[0], 1);
   fill_data(&charts[1], 2);
   //--- Test only functions
-
 
   // ads_read_values(&charts[0]);
   send_data_to_MC(charts, 2);

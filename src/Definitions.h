@@ -4,13 +4,24 @@
 #include <esp_now.h>
 
 // ads.setGain(GAIN_TWOTHIRDS);  // 2/3x gain  +/- 6.144V  1 bit = 3mV
-// ads.setGain(GAIN_ONE);        // 1x gain    +/- 4.096V  1 bit = 2mV    
-// ads.setGain(GAIN_TWO);        // 2x gain    +/- 2.048V  1 bit = 1mV   
+// ads.setGain(GAIN_ONE);        // 1x gain    +/- 4.096V  1 bit = 2mV
+// ads.setGain(GAIN_TWO);        // 2x gain    +/- 2.048V  1 bit = 1mV
 // ads.setGain(GAIN_FOUR);       // 4x gain    +/- 1.024V  1 bit = 0.5mV
 // ads.setGain(GAIN_EIGHT);      // 8x gain    +/- 0.512V  1 bit = 0.25mV
 // ads.setGain(GAIN_SIXTEEN);    // 16x gain   +/- 0.256V  1 bit = 0.125mV
 
-//Debug Mode on or off
+// Multipliers:
+/* VOLTAGE
+| Multiplier | Maximum Scale Voltage (V) | Definition in HTML (up to) | Gain | Max Voltage (V) | 1 bit value (mV) |
+|------------|---------------------------|----------------------------|------|-----------------|------------------|
+|    0.2     |          409.6            |            250             |  1   |      4.096      |        2         |
+|    0.1     |          204.8            |            200             |  2   |      2.048      |        1         |
+|   0.05     |          102.4            |            100             |  4   |      1.024      |       0.5        |
+|  0.025     |           51.2            |             50             |  8   |      0.512      |       0.25       |
+| 0.0125     |           25.6            |             25             | 16   |      0.256      |       0.125      |
+*/
+
+// Debug Mode on or off
 #define DEBUG
 #ifdef DEBUG
 #define debug(x) Serial.printf(x)
@@ -18,7 +29,7 @@
 #define debug(x)
 #endif
 
-//WIFI name
+// WIFI name
 #define OSCILOBOY_NAME "Osciloboy-1"
 
 // Main definitions for ADS1015
@@ -26,16 +37,16 @@
 #define ADC_I2C_SCL_PIN 18
 #define VOLTAGE_I2C_ADDR 0x48
 #define CURRENT_I2C_ADDR 0x49
-#define ADC_I2C_SPEED 800000U //800 kHz I2C
-#define SAMPLING_TIME_US 85000 //Sample window size
-#define VECTOR_SIZE 300 //Minimum vector size to fit each ADC data eg.: VECTOR_SIZE = 300 -> 300 voltage points, 300 current points.
+#define ADC_I2C_SPEED 800000U  // 800 kHz I2C
+#define SAMPLING_TIME_US 85000 // Sample window size
+#define VECTOR_SIZE 300        // Minimum vector size to fit each ADC data eg.: VECTOR_SIZE = 300 -> 300 voltage points, 300 current points.
 #define SYNC_PIN 16
 #define VOLTAGE_DRDY_PIN 23
 #define CURRENT_DRDY_PIN 17
 
-//Data Size handler
-#define JSON_GRAPH_SIZE 15000 //Allocation memory in bytes for each json file graph.
-#define NUM_CHARTS 3 //Defines the number of charts to allocate memory
+// Data Size handler
+#define JSON_GRAPH_SIZE 15000 // Allocation memory in bytes for each json file graph.
+#define NUM_CHARTS 3          // Defines the number of charts to allocate memory
 
 // Main variables for ADS1015
 TwoWire AdcI2C = TwoWire(0);
@@ -44,21 +55,21 @@ ADS1015_WE ads_current = ADS1015_WE(&AdcI2C, CURRENT_I2C_ADDR);
 volatile bool voltage_data_ready = 0;
 volatile bool current_data_ready = 0;
 
-//Wifi SSID variable
+// Wifi SSID variable
 char ssid_name[63];
-//Task handler for dual-core operation
+// Task handler for dual-core operation
 TaskHandle_t ADC_handler;
 
-//Client IDs for websocket connections
+// Client IDs for websocket connections
 uint8_t main_client_id = 0;
 uint8_t client_id[2];
 uint8_t client_counter = 0;
 uint8_t counter_support = 0;
 
-//Websocket binary message
+// Websocket binary message
 typedef struct
 {
-  int8_t chart_id=0;
+  int8_t chart_id = 0;
   int8_t voltage_gain = 16;
   int8_t current_type = 16;
   int16_t voltage_value[VECTOR_SIZE];
@@ -79,7 +90,8 @@ MC_income_message mcMessage;
 
 // ESP-NOW variables
 esp_now_peer_info_t peerInfo;
-typedef struct {
+typedef struct
+{
   int8_t chart_id = 1;
   char ssid[63];
 } esp_now_struct;

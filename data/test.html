@@ -145,19 +145,20 @@
     <div class="control-box">
       <label for="voltageSelect">Escala de Tensão:</label>
       <select id="voltageSelect" onchange="setVoltageRange()">
-        <option value="25V">25V</option>
-        <option value="50V">50V</option>
-        <option value="100V">100V</option>
-        <option value="200V">200V</option>
-        <option value="250V" selected>250V</option>
+        <option value="25V">25 V</option>
+        <option value="50V">50 V</option>
+        <option value="100V">100 V</option>
+        <option value="200V">200 V</option>
+        <option value="250V" selected>250 V</option>
       </select>
     </div>
     <div class="control-box">
-      <label for="currentSelect">Escala de Corrente:</label>
+      <label for="currentSelect">Escala de Corrente <br><span>&#9888;</span> MUDAR A CHAVE FISICA ANTES
+        <span>&#9888;</span></label>
       <select id="currentSelect" onchange="setCurrentRange()">
-        <option value="uA">uA</option>
-        <option value="mA">mA</option>
-        <option value="A" selected>A</option>
+        <option value="uA">2000 uA</option>
+        <option value="mA">200 mA</option>
+        <option value="A" selected>10 A</option>
       </select>
     </div>
   </div>
@@ -180,18 +181,50 @@
   <script src="./chart.js"></script>
 
   <script>
+    // Multipliers:
+    /* VOLTAGE
+    | Multiplier | Maximum Scale Voltage (V) | Definition in HTML (up to) | Gain | Max Voltage (V) | 1 bit value (mV) |
+    |------------|---------------------------|----------------------------|------|-----------------|------------------|
+    |    0.2     |          409.6            |            250             |  1   |      4.096      |        2         |
+    |    0.1     |          204.8            |            200             |  2   |      2.048      |        1         |
+    |   0.05     |          102.4            |            100             |  4   |      1.024      |       0.5        |
+    |  0.025     |           51.2            |             50             |  8   |      0.512      |       0.25       |
+    | 0.0125     |           25.6            |             25             | 16   |      0.256      |       0.125      |
+    */
+
+    const voltage_250_mult = 0.2;
+    const voltage_200_mult = 0.1;
+    const voltage_100_mult = 0.05;
+    const voltage_50_mult = 0.025;
+    const voltage_25_mult = 0.0125;
+    let selectedVoltage = "250V"; //Default Voltage in Selector
+    let voltageMultiplier = voltage_250_mult; //default in 250V
+
+    //Current gain is ALWAYS x16, but since we want to show the values in A/mA/uA. 
+    //And we have the filter. It is necessary to change the multiplier accordingly:
+    /* CURRENT
+    | Scale | Multiplier      |
+    |-------|-----------------|
+    |   A   | 0.01875         |
+    |  mA   | 0.0001856       |
+    |  uA   | 0.000001875     |
+    */
+
+    const current_A_mult = 0.01875;
+    const current_mA_mult = 0.0001856;
+    const current_uA_mult = 0.000001875;
+    let selectedCurrent = "A" //Default Current in selector
+    let currentMultiplier = current_A_mult; //default in A
+
     //-------- VARIABLES AND DEFINITIONS -------------------------------------
     let isPlaying = false;
     let triggerValue = 1; //Default trigger value
     let trigger_ch = "voltage"; //Default trigger source
     const maxTriggerLenght = 180; //maximum number of points to try to trigger
     let triggerType = "AC"; // Default trigger type
-    let selectedVoltage = "250V"
-    let selectedCurrent = "A"
 
 
-    let voltageMultiplier = 1;
-    let currentMultiplier = 1;
+
     const max_scale_us = 50000;
 
     let voltage_offset = 0;
@@ -303,16 +336,16 @@
         //Trigger only with the main voltage or current
         let triggerPos = 0;
         if (trigger_ch == "voltage") {
-          triggerPos = triggerSet(chartData[0].voltage_value, chartData[0].voltage_time, triggerType);
+          triggerPos = triggerSet(chartData[0].voltage_value.map(value => value * voltageMultiplier), chartData[0].voltage_time, triggerType);
         } else {
-          triggerPos = triggerSet(chartData[0].current_value, chartData[0].current_time, triggerType);
+          triggerPos = triggerSet(chartData[0].current_value.map(value => value * currentMultiplier), chartData[0].current_time, triggerType);
         }
 
-        //Truncate arrays to a fixed size (graph window size)
+        //Extract Datasets and multiply to correct scale
         for (let i = 0; i < maxDatasets; i++) {
-          //Extract Datasets
-          const voltageValues = chartData[i].voltage_value;
-          const currentValues = chartData[i].current_value;
+          
+          const voltageValues = chartData[i].voltage_value.map(value => value * voltageMultiplier);
+          const currentValues = chartData[i].current_value.map(value => value * currentMultiplier);
           const voltageTimes = chartData[i].voltage_time;
           const currentTimes = chartData[i].current_time;
 
@@ -340,14 +373,14 @@
           if (myChart.data.datasets[2 * i]) {
             myChart.data.datasets[2 * i].data = truncatedData.voltageValues.map((value, index) => ({
               x: truncatedData.voltageTimes[index] - voltage_offset,
-              y: value * voltageMultiplier
+              y: value
             }));
           }
 
           if (myChart.data.datasets[2 * i + 1]) {
             myChart.data.datasets[2 * i + 1].data = truncatedData.currentValues.map((value, index) => ({
               x: truncatedData.currentTimes[index] - current_offset,
-              y: value * currentMultiplier
+              y: value
             }));
           }
 
@@ -426,15 +459,57 @@
     function setVoltageRange() {
       const voltageDropdown = document.getElementById("voltageSelect");
       selectedVoltage = voltageDropdown.value;
-      // Handle the selected voltage
+      // Handle the selected voltage and send via WS
+      switch (selectedVoltage) {
+        case "25V":
+          websocket.send("25V");
+          voltageMultiplier = voltage_25_mult;
+          break;
+        case "50V":
+          websocket.send("50V");
+          voltageMultiplier = voltage_50_mult;
+          break;
+        case "100V":
+          websocket.send("100V");
+          voltageMultiplier = voltage_100_mult;
+          break;
+        case "200V":
+          websocket.send("200V");
+          voltageMultiplier = voltage_200_mult;
+          break;
+        case "250V":
+          websocket.send("250V");
+          voltageMultiplier = voltage_250_mult;
+          break;
+        default:
+          break;
+      }
+
       console.log("Voltage set to:", selectedVoltage);
     }
 
     function setCurrentRange() {
-      const voltageDropdown = document.getElementById("currentSelect");
-      selectedVoltage = voltageDropdown.value;
-      // Handle the selected voltage
-      console.log("Voltage set to:", selectedVoltage);
+      const currentDropdown = document.getElementById("currentSelect");
+      selectedCurrent = currentDropdown.value;
+      // Handle the selected current
+      switch (selectedCurrent) {
+        case "A":
+          alert("Lembre de mudar a chave fisicamente\nRISCO DE DANO AO DISPOSITIVO");
+          currentMultiplier = current_A_mult;
+          break;
+        case "mA":
+          alert("Lembre de mudar a chave fisicamente\nRISCO DE DANO AO DISPOSITIVO");
+          currentMultiplier = current_mA_mult;
+          break;
+        case "uA":
+          alert("Lembre de mudar a chave fisicamente\nRISCO DE DANO AO DISPOSITIVO");
+          currentMultiplier = current_uA_mult;
+          break;
+        default:
+          break;
+      }
+
+      console.log("Current set to:", selectedCurrent);
     }
 
     function calculateFrequency(times, values) {
