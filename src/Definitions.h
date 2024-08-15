@@ -33,6 +33,10 @@
 #define VOLTAGE_DRDY_PIN 23
 #define CURRENT_DRDY_PIN 17
 
+//Data Size handler
+#define JSON_GRAPH_SIZE 15000 //Allocation memory in bytes for each json file graph.
+#define NUM_CHARTS 3 //Defines the number of charts to allocate memory
+
 // Main variables for ADS1015
 TwoWire AdcI2C = TwoWire(0);
 ADS1015_WE ads_voltage = ADS1015_WE(&AdcI2C, VOLTAGE_I2C_ADDR);
@@ -62,7 +66,7 @@ typedef struct
   int64_t voltage_time[VECTOR_SIZE];
   int64_t current_time[VECTOR_SIZE];
 } Chart_data;
-Chart_data localData, receivedData1, receivedData2;
+Chart_data charts[NUM_CHARTS];
 
 // Message that comes from webserver (change voltage gain current type)
 typedef struct

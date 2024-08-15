@@ -47,29 +47,80 @@
   </style>
 </head>
 
+<!-- Body  -->
+
 <body>
-  <canvas id="myChart"></canvas>
+  <div class="control-container">
+    <!-- Control Play or Pause status -->
+    <div class="control-box">
+      <button onclick="togglePlayPause()">Play/Pause</button>
+    </div>
+
+    <!-- Trigger Value Control -->
+    <div class="control-box">
+      <label for="triggerValueInput">Valor de disparo:</label>
+      <input type="number" id="triggerValueInput" value="1">
+      <button onclick="updateTriggerValue()">Atualizar</button>
+    </div>
+
+    <!-- Amount of datasets -->
+    <div class="control-box">
+      <label for="datasetCountInput">Conjuntos de Dados:</label>
+      <input type="number" id="datasetCountInput" value="1" min="1" max="3">
+      <button onclick="updateDatasetCount()">Atualizar</button>
+    </div>
+
+    <!-- Let the user select Voltage and Current max values -->
+    <div class="control-box">
+      <label for="voltageSelect">Escala de Tensão:</label>
+      <select id="voltageSelect" onchange="setVoltageRange()">
+        <option value="25V">25V</option>
+        <option value="50V">50V</option>
+        <option value="100V">100V</option>
+        <option value="200V">200V</option>
+        <option value="250V" selected>250V</option>
+      </select>
+    </div>
+    <div class="control-box">
+      <label for="currentSelect">Escala de Corrente:</label>
+      <select id="currentSelect" onchange="setCurrentRange()">
+        <option value="uA">uA</option>
+        <option value="mA">mA</option>
+        <option value="A" select>A</option>
+      </select>
+    </div>
+  </div>
   <div class="info-container">
     <div class="info-box" id="tensao-rms">Tensão RMS: <span>0</span> V</div>
     <div class="info-box" id="corrente-rms">Corrente RMS: <span>0</span> A</div>
     <div class="info-box" id="frequencia">Frequência: <span>0</span> Hz</div>
     <div class="info-box" id="potencia-ativa">Potência Ativa: <span>0</span> W</div>
-    <div class="info-box" id="potencia-reativa">Potência Reativa: <span>0</span> var</div>
+    <div class="info-box" id="potencia-reativa">Potência Reativa: <span>0</span> VAr</div>
     <div class="info-box" id="potencia-aparente">Potência Aparente: <span>0</span> VA</div>
     <div class="info-box" id="fator-potencia">Fator de Potência: <span>0</span></div>
   </div>
-  <div class="control-container">
-    <div class="control-box">
-      <label for="triggerValueInput">Valor de disparo:</label>
-      <input type="number" id="triggerValueInput" value="30">
-      <button onclick="updateTriggerValue()">Atualizar</button>
-    </div>
-  </div>
+  <canvas id="myChart"></canvas>
+  <!-- Local library import -->
   <script src="./chart.js"></script>
+
   <script>
-    var triggerValue = 30;
-    const maxLenght = 250;
-    var offset = 0;
+    //-------- VARIABLES AND DEFINITIONS -------------------------------------
+    let isPlaying = false;
+    let triggerValue = 1; //Default trigger value
+    let trigger_ch = "voltage"; //Default trigger source
+    const maxTriggerLenght = 180; //maximum number of points to try to trigger
+    let triggerType = "AC"; // Default trigger type
+    let selectedVoltage = "250V"
+
+
+    let voltageMultiplier = 1;
+    let currentMultiplier = 1;
+    const max_scale_us = 50000;
+
+    let voltage_offset = 0;
+    let current_offset = 0;
+    let maxDatasets = 1; // Default number of datasets
+
     var websocket;
     window.addEventListener('load', onload);
     const ctx = document.getElementById('myChart').getContext('2d');
@@ -102,7 +153,13 @@
         scales: {
           x: {
             type: 'linear',
-            position: 'bottom'
+            position: 'bottom',
+            title: {
+              display: true,
+              text: 'Tempo (uS)'
+            },
+            min: 0,
+            max: 0
           },
           'y-axis-1': {
             type: 'linear',
@@ -129,125 +186,262 @@
 
     const myChart = new Chart(ctx, config);
 
-    function onload(event) {
-      initWebSocket();
-    };
-
-    function cleanArray(arr) {
-      let cleanedArray = arr.slice();
-      while (cleanedArray.length > 0 && cleanedArray[cleanedArray.length - 1] === 0) {
-        cleanedArray.pop();
-      }
-      return cleanedArray;
-    }
-
-    function truncateArrays(voltageValues, currentValues, voltageTimes, currentTimes) {
-      const minLength = Math.min(voltageValues.length, currentValues.length, voltageTimes.length, currentTimes.length);
-      
-      for (let i = 0; i<minLength; i++){
-        if ((voltageValues[i] <= triggerValue) && (voltageValues[i+1] >= triggerValue)){
-          console.log(i + ": " + voltageValues[i])
-          offset = voltageTimes[i];
-          return {
-            voltageValues: voltageValues.slice(i, maxLenght+i),
-            currentValues: currentValues.slice(i, maxLenght+i),
-            voltageTimes: voltageTimes.slice(i, maxLenght+i),
-            currentTimes: currentTimes.slice(i, maxLenght+i)
+    //Find trigger value position
+    function triggerSet(readingValues, timeValues, triggerType) {
+      //Verify if the value and the next one and try to find trigger value
+      if (triggerType == "AC") {
+        for (let i = 0; i < maxTriggerLenght; i++) {
+          if ((readingValues[i] <= triggerValue) && (readingValues[i + 1] >= triggerValue)) {
+            voltage_offset = timeValues[i];
+            current_offset = timeValues[i];
+            return i;
           }
         }
       }
+      //Verify if trigger is set to DC and don't trigger in this case
+      else if (triggerType == "DC") {
+        voltage_offset = timeValues[0];
+        current_offset = timeValues[0];
+        return 0;
+      }
+    }
+
+    //Truncate arrays based on the trigger value and graph window size
+    function truncateArrays(triggerPos, voltageValues, currentValues, voltageTimes, currentTimes) {
 
       return {
-            voltageValues: voltageValues.slice(0, maxLenght),
-            currentValues: currentValues.slice(0, maxLenght),
-            voltageTimes: voltageTimes.slice(0, maxLenght),
-            currentTimes: currentTimes.slice(0, maxLenght)
-          }
+        voltageValues: voltageValues.slice(triggerPos, maxTriggerLenght + triggerPos),
+        currentValues: currentValues.slice(triggerPos, maxTriggerLenght + triggerPos),
+        voltageTimes: voltageTimes.slice(triggerPos, maxTriggerLenght + triggerPos),
+        currentTimes: currentTimes.slice(triggerPos, maxTriggerLenght + triggerPos)
+      }
     }
-    
 
     function updateChart(data) {
-      const chartData = JSON.parse(data);
-      console.log(data);
-      let voltageValues = cleanArray(chartData.voltage_value);
-      let currentValues = cleanArray(chartData.current_value);
-      let voltageTimes = cleanArray(chartData.voltage_time);
-      let currentTimes = cleanArray(chartData.current_time);
+      if (isPlaying) { //Only show data in graph if the it is not stoped
+        console.log('Received data:', data); // Log received data for debugging
+        const chartData = JSON.parse(data);
+        console.log("Object parsed: ", chartData);
 
-      // Atualizando os valores das caixas de informação
-      updateTensaoRMS(voltageValues);
-      updateCorrenteRMS(currentValues);
-      updateFrequencia(voltageTimes);
-      updatePotenciaAtiva(voltageValues, currentValues);
-      updatePotenciaReativa(voltageValues, currentValues);
-      updatePotenciaAparente(voltageValues, currentValues);
-      updateFatorPotencia(voltageValues, currentValues);
+        //Trigger only with the main voltage or current
+        let triggerPos = 0;
+        if (trigger_ch == "voltage") {
+          triggerPos = triggerSet(chartData[0].voltage_value, chartData[0].voltage_time, triggerType);
+        } else {
+          triggerPos = triggerSet(chartData[0].current_value, chartData[0].current_time, triggerType);
+        }
 
-      // Truncando os arrays pelo menor tamanho
-      const truncatedData = truncateArrays(chartData.voltage_value, chartData.current_value, chartData.voltage_time, chartData.current_time);
-      voltageValues = truncatedData.voltageValues;
-      currentValues = truncatedData.currentValues;
-      voltageTimes = truncatedData.voltageTimes;
-      currentTimes = truncatedData.currentTimes;
+        //Truncate arrays to a fixed size (graph window size)
+        for (let i = 0; i < maxDatasets; i++) {
+          //Extract Datasets
+          const voltageValues = chartData[i].voltage_value;
+          const currentValues = chartData[i].current_value;
+          const voltageTimes = chartData[i].voltage_time;
+          const currentTimes = chartData[i].current_time;
 
-      // Supondo que os tempos sejam iguais para ambas as séries
-      myChart.data.labels = voltageTimes;
+          //Truncate
+          const truncatedData = truncateArrays(
+            triggerPos,
+            voltageValues,
+            currentValues,
+            voltageTimes,
+            currentTimes
+          );
 
-      // Atualizando os dados do gráfico
-      myChart.data.datasets[0].data = voltageValues.map((value, index) => ({ x: voltageTimes[index]-offset, y: value }));
-      myChart.data.datasets[1].data = currentValues.map((value, index) => ({ x: currentTimes[index]-offset, y: value }));
+          //Update info boxes only with the first data values
+          if (i == 0) {
+            updateVoltageRMS(truncatedData.voltageValues);
+            updateCurrentRMS(truncatedData.currentValues);
+            updateFrequency(truncatedData.voltageTimes, truncatedData.voltageValues);
+            updateActivePower(truncatedData.voltageValues, truncatedData.currentValues);
+            updateReactivePower(truncatedData.voltageValues, truncatedData.currentValues);
+            updateApparentPower(truncatedData.voltageValues, truncatedData.currentValues);
+            updatePowerFactor(truncatedData.voltageValues, truncatedData.currentValues);
+          }
 
-      myChart.update();
 
+          if (myChart.data.datasets[2 * i]) {
+            myChart.data.datasets[2 * i].data = truncatedData.voltageValues.map((value, index) => ({
+              x: truncatedData.voltageTimes[index] - voltage_offset,
+              y: value * voltageMultiplier
+            }));
+          }
+
+          if (myChart.data.datasets[2 * i + 1]) {
+            myChart.data.datasets[2 * i + 1].data = truncatedData.currentValues.map((value, index) => ({
+              x: truncatedData.currentTimes[index] - current_offset,
+              y: value * currentMultiplier
+            }));
+          }
+
+        }
+
+        myChart.update();
+      }
     };
 
+    function initChart() {
+      // Clear existing datasets
+      myChart.data.datasets = [];
+
+      // Add datasets for voltage and current
+      for (let i = 0; i < maxDatasets; i++) {
+        myChart.data.datasets.push({
+          label: `Tensão ${i + 1}`,
+          data: [],
+          borderColor: `rgba(${255 - i * 50}, ${99 + i * 50}, ${132 + i * 50}, 1)`,
+          backgroundColor: `rgba(${255 - i * 50}, ${99 + i * 50}, ${132 + i * 50}, 0.2)`,
+          yAxisID: `y-axis-${i + 1}`
+        },
+          {
+            label: `Corrente ${i + 1}`,
+            data: [],
+            borderColor: `rgba(${54 - i * 50}, ${162 + i * 50}, ${235 - i * 50}, 1)`,
+            backgroundColor: `rgba(${54 - i * 50}, ${162 + i * 50}, ${235 - i * 50}, 0.2)`,
+            yAxisID: `y-axis-${i + 1}`
+          });
+      }
+
+      // Update the chart's y-axes
+      const yAxes = {};
+      for (let i = 0; i < maxDatasets; i++) {
+        yAxes[`y-axis-${i + 1}`] = {
+          type: 'linear',
+          position: i % 2 === 0 ? 'left' : 'right',
+          title: {
+            display: true,
+            text: i % 2 === 0 ? 'Tensão (V)' : 'Corrente (A)'
+          },
+          grid: {
+            drawOnChartArea: i % 2 === 0
+          }
+        };
+      }
+      myChart.options.scales = {
+        x: {
+          type: 'linear',
+          position: 'bottom',
+          title: {
+            display: true,
+            text: 'Tempo (uS)'
+          },
+          min: 0,
+          max: max_scale_us // Set the maximum value of the x scale
+        },
+        ...yAxes
+      };
+
+      myChart.update();
+    }
+
+    function updateDatasetCount() {
+      const datasetCountInput = document.getElementById('datasetCountInput').value;
+      maxDatasets = parseInt(datasetCountInput);
+
+      // Reinitialize chart with the updated number of datasets
+      initChart();
+    }
+
+    function togglePlayPause() {
+      isPlaying = !isPlaying;
+    }
+
+    function setVoltageRange() {
+      const voltageDropdown = document.getElementById("voltageSelect");
+      selectedVoltage = voltageDropdown.value;
+      // Handle the selected voltage
+      console.log("Voltage set to:", selectedVoltage);
+    }
+
+    function calculateFrequency(times, values) {
+      if (times.length < 2) {
+        return NaN; // Not enough samples to calculate frequency
+      }
+
+      let periods = [];
+      let previousCrossingTime = null;
+
+      for (let i = 1; i < times.length; i++) {
+        // Detect zero crossing (positive-to-negative or negative-to-positive)
+        if ((values[i - 1] <= 0 && values[i] > 0) || (values[i - 1] >= 0 && values[i] < 0)) {
+          if (previousCrossingTime !== null) {
+            const period = times[i] - previousCrossingTime;
+            periods.push(period);
+          }
+          previousCrossingTime = times[i];
+        }
+      }
+
+      if (periods.length === 0) {
+        return NaN; // No zero crossings found
+      }
+
+      const averagePeriod = periods.reduce((sum, period) => sum + period, 0) / periods.length;
+      const averagePeriodInSeconds = averagePeriod / 1e6; // Convert period from uSeconds to seconds
+
+      const frequency = 1 / averagePeriodInSeconds; // Frequency in Hz
+      return frequency;
+    }
+
     function calculateRMS(values) {
+      if (values.length === 0) return 0; // Handle empty array case
       const squareSum = values.reduce((sum, value) => sum + value * value, 0);
       return Math.sqrt(squareSum / values.length);
     }
 
-    function calculateFrequency(times) {
-      if (times.length < 2) return 0;
-      const period = (times[times.length - 1] - times[0]) / (times.length - 1);
-      return 1 / period;
-    }
-
-    function updateTensaoRMS(voltageValues) {
+    function updateVoltageRMS(voltageValues) {
       const rmsValue = calculateRMS(voltageValues);
-      document.getElementById('tensao-rms').querySelector('span').textContent = rmsValue.toFixed(2);
+      document.getElementById('tensao-rms').querySelector('span').textContent = rmsValue.toExponential(3);
     }
 
-    function updateCorrenteRMS(currentValues) {
+    function updateCurrentRMS(currentValues) {
       const rmsValue = calculateRMS(currentValues);
-      document.getElementById('corrente-rms').querySelector('span').textContent = rmsValue.toFixed(2);
+      document.getElementById('corrente-rms').querySelector('span').textContent = rmsValue.toExponential(3);
     }
 
-    function updateFrequencia(times) {
-      const freqValue = calculateFrequency(times);
-      document.getElementById('frequencia').querySelector('span').textContent = freqValue.toFixed(2);
+    function updateFrequency(times, values) {
+      const freqValue = calculateFrequency(times, values);
+      document.getElementById('frequencia').querySelector('span').textContent = freqValue.toExponential(3);
     }
 
-    function updatePotenciaAtiva(voltageValues, currentValues) {
+    function updateActivePower(voltageValues, currentValues) {
+      if (voltageValues.length === 0 || currentValues.length === 0) return; // Handle empty arrays
       const activePower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
-      document.getElementById('potencia-ativa').querySelector('span').textContent = activePower.toFixed(2);
+      document.getElementById('potencia-ativa').querySelector('span').textContent = activePower.toExponential(3);
     }
 
-    function updatePotenciaReativa(voltageValues, currentValues) {
-      const reactivePower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
-      document.getElementById('potencia-reativa').querySelector('span').textContent = reactivePower.toFixed(2);
-    }
-
-    function updatePotenciaAparente(voltageValues, currentValues) {
-      const apparentPower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
-      document.getElementById('potencia-aparente').querySelector('span').textContent = apparentPower.toFixed(2);
-    }
-
-    function updateFatorPotencia(voltageValues, currentValues) {
+    function updateReactivePower(voltageValues, currentValues) {
+      if (voltageValues.length === 0 || currentValues.length === 0) return; // Handle empty arrays
+      const voltageRMS = calculateRMS(voltageValues);
+      const currentRMS = calculateRMS(currentValues);
       const activePower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
-      const apparentPower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
+      const apparentPower = voltageRMS * currentRMS;
+      const reactivePower = Math.sqrt(Math.pow(apparentPower, 2) - Math.pow(activePower, 2));
+      document.getElementById('potencia-reativa').querySelector('span').textContent = reactivePower.toExponential(3);
+    }
+
+    function updateApparentPower(voltageValues, currentValues) {
+      if (voltageValues.length === 0 || currentValues.length === 0) return; // Handle empty arrays
+      const voltageRMS = calculateRMS(voltageValues);
+      const currentRMS = calculateRMS(currentValues);
+      const apparentPower = voltageRMS * currentRMS;
+      document.getElementById('potencia-aparente').querySelector('span').textContent = apparentPower.toExponential(3);
+    }
+
+    function updatePowerFactor(voltageValues, currentValues) {
+      if (voltageValues.length === 0 || currentValues.length === 0) return; // Handle empty arrays
+      const activePower = voltageValues.reduce((sum, voltage, index) => sum + voltage * currentValues[index], 0) / voltageValues.length;
+      const voltageRMS = calculateRMS(voltageValues);
+      const currentRMS = calculateRMS(currentValues);
+      const apparentPower = voltageRMS * currentRMS;
       const powerFactor = activePower / apparentPower;
-      document.getElementById('fator-potencia').querySelector('span').textContent = powerFactor.toFixed(2);
+      document.getElementById('fator-potencia').querySelector('span').textContent = powerFactor.toExponential(3);
     }
+
+    function onload(event) {
+      initWebSocket();
+      initChart();
+    };
 
     function onOpen() {
       console.log("Connected");
@@ -275,6 +469,7 @@
       console.log('Trigger Value updated to:', triggerValue);
     }
   </script>
+
 </body>
 
 </html>
