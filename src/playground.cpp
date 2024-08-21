@@ -45,6 +45,13 @@ void onChartlibRequest(AsyncWebServerRequest *request)
   request->send(SPIFFS, "/chart.js", "text/javascript");
 }
 
+//Since there is a need to change the 
+void change_voltage_range(ADS1015_WE *ads, ADS1115_RANGE range)
+{
+  ads->setVoltageRange_mV(range);
+  ads->setAlertPinToConversionReady();
+}
+
 // Websocket event handler
 void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
 {
@@ -52,23 +59,34 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lengt
   {
   case WStype_TEXT:
     // Convert payload to a string and print it
-    if (!strcmp("25V", (char *)payload)){
-      ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
+    if (!strcmp("25V", (char *)payload))
+    {
+      change_voltage_range(&ads_voltage, ADS1015_RANGE_0256);
       debug("Voltage 25V\n");
-    }else if(!strcmp("50V", (char *)payload)){
-      ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0512);
+    }
+    else if (!strcmp("50V", (char *)payload))
+    {
+      change_voltage_range(&ads_voltage, ADS1015_RANGE_0512);
       debug("Voltage 50V\n");
-    }else if(!strcmp("100V", (char *)payload)){
-      ads_voltage.setVoltageRange_mV(ADS1015_RANGE_1024);
+    }
+    else if (!strcmp("100V", (char *)payload))
+    {
+      change_voltage_range(&ads_voltage, ADS1015_RANGE_1024);
       debug("Voltage 100V\n");
-    }else if(!strcmp("200V", (char *)payload)){
-      ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
+    }
+    else if (!strcmp("200V", (char *)payload))
+    {
+      change_voltage_range(&ads_voltage, ADS1015_RANGE_2048);
       debug("Voltage 200V\n");
-    }else if(!strcmp("250V", (char *)payload)){
-      ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
+    }
+    else if (!strcmp("250V", (char *)payload))
+    {
+      change_voltage_range(&ads_voltage, ADS1015_RANGE_4096);
       debug("Voltage 250V\n");
-    }else{
-      //verify other cases
+    }
+    else
+    {
+      // verify other cases
     }
     break;
 
@@ -237,7 +255,8 @@ void ads_initial_config(ADS1015_WE *ads)
   if (!ads->init(true)) // true is necessary to configure lib for ADS1015 instead of ADS1115
   {
     Serial.println("ADS initialization - FAILURE");
-    while (1);
+    while (1)
+      ;
   }
   else
   {
@@ -248,10 +267,11 @@ void ads_initial_config(ADS1015_WE *ads)
   ads->setConvRate(ADS1015_3300_SPS);
   ads->setMeasureMode(ADS1015_CONTINUOUS);
   ads->setAlertPinMode(ADS1015_ASSERT_AFTER_1);
+  ads->setAlertLatch(ADS1015_LATCH_ENABLED); // this prevents the code from being always interrupted when the adc gets another reading
   ads->setAlertPinToConversionReady();
-  ads->setAlertLatch(ADS1115_LATCH_ENABLED); // this prevents the code from being always interrupted when the adc gets another reading
 }
 
+// Startup SPIFFS, Wifi AP, Websockets and - in the future - ESP_NOW
 void network_initialize()
 {
   // Initialize SPIFFS
@@ -277,6 +297,7 @@ void network_initialize()
   server.begin();
 }
 
+
 void setup()
 {
   // Initialize serial communication
@@ -288,30 +309,32 @@ void setup()
   // ------------------ ADC initialization ----------------------
   AdcI2C.begin(ADC_I2C_SDA_PIN, ADC_I2C_SCL_PIN, ADC_I2C_SPEED);
 
-  // Voltage and current startup and initial config
-  ads_initial_config(&ads_voltage);
-  ads_initial_config(&ads_current);
-
-  // -------- Voltage Ranges _initial_ Definition --------------
-  ads_voltage.setVoltageRange_mV(ADS1015_RANGE_4096);
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_2048);
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_1024);
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0512);
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
-
-  // -------- Current Ranges Definition (always remains the same) -------------
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_4096);
-  // ads_current.setVoltageRange_mV(ADS1015_RANGE_2048);
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_1024);
-  // ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0512);
-  ads_voltage.setVoltageRange_mV(ADS1015_RANGE_0256);
-
-  // Pin definitions and interrupts for ADC
+  // Set ESP32 pins to interrupt with conversion ready function of the adc
   pinMode(VOLTAGE_DRDY_PIN, INPUT_PULLUP);
   pinMode(CURRENT_DRDY_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(VOLTAGE_DRDY_PIN), onVoltageDrdy, FALLING);
   attachInterrupt(digitalPinToInterrupt(CURRENT_DRDY_PIN), onCurrentDrdy, FALLING);
+  
+  // Voltage and current startup and initial config
+  ads_initial_config(&ads_voltage);
+  ads_initial_config(&ads_current);
 
+
+  // -------- Voltage Ranges _initial_ Definition --------------
+  change_voltage_range(&ads_voltage, ADS1015_RANGE_4096);
+  // change_voltage_range(&ads_voltage, ADS1015_RANGE_2048);
+  // change_voltage_range(&ads_voltage, ADS1015_RANGE_1024);
+  // change_voltage_range(&ads_voltage, ADS1015_RANGE_0512);
+  // change_voltage_range(&ads_voltage, ADS1015_RANGE_0256);
+
+  // -------- Current Ranges Definition (always remains the smallest one) -------------
+  // ads_current.setVoltageRange_mV(ADS1015_RANGE_4096);
+  // ads_current.setVoltageRange_mV(ADS1015_RANGE_2048);
+  // ads_current.setVoltageRange_mV(ADS1015_RANGE_1024);
+  // ads_current.setVoltageRange_mV(ADS1015_RANGE_0512);
+  change_voltage_range(&ads_current, ADS1015_RANGE_0256);
+
+  // Pin definitions and interrupts for ADC
   Serial.println("Setup Finalizado");
   delay(500);
 }
@@ -322,7 +345,6 @@ void loop()
   // fill_data(&charts[0], 1);
   // fill_data(&charts[1], 2);
   //--- Test only functions
-
   ads_read_values(&charts[0]);
   send_data_to_MC(charts, 1);
   webSocket.loop();

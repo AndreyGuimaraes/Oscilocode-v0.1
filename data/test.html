@@ -25,11 +25,10 @@
     .info-container {
       width: 90%;
       display: flex;
-      justify-content: space-between;
+      justify-content: space-evenly;
       margin-top: 5px;
       flex-wrap: wrap;
-      gap: 2px;
-      /* Reduce space between info boxes */
+      gap: 5px;
     }
 
     .info-box {
@@ -37,12 +36,15 @@
       border-radius: 4px;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
       padding: 6px;
-      /* Reduced padding */
-      width: 13%;
+      width: 20%;
       text-align: center;
       margin: 0;
       font-size: 12px;
       transition: transform 0.3s ease;
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .info-box:hover {
@@ -70,9 +72,15 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      /* Center elements horizontally */
       justify-content: center;
-      /* Center elements vertically */
+    }
+
+    .control-box .input-group {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      gap: 2px;
     }
 
     .control-box label {
@@ -123,6 +131,14 @@
     .control-box.play-pause button:hover {
       background-color: #218838;
     }
+
+    .trigger-box {
+      flex: 1 1 calc(30% - 10px); /* Increase width for more space */
+    }
+
+    .dataset-box {
+      flex: 1 1 calc(15% - 10px); /* Decrease width for less space */
+    }
   </style>
 </head>
 
@@ -132,17 +148,22 @@
     <div class="control-box play-pause">
       <button onclick="togglePlayPause()">Play/Pause</button>
     </div>
-    <div class="control-box">
+    <div class="control-box trigger-box">
       <label for="triggerValueInput">Valor de disparo:</label>
-      <input type="number" id="triggerValueInput" value="1">
+      <div class="input-group">
+        <input type="number" id="triggerValueInput" value="0">
+        <select id="triggerChannelSelect" onchange="setTriggerChannel()">
+          <option value="voltage">V</option>
+          <option value="current">A</option>
+        </select>
+        <select id="triggerTypeSelect" onchange="setTriggerType()">
+          <option value="AC">AC</option>
+          <option value="DC">DC</option>
+        </select>
+      </div>
       <button onclick="updateTriggerValue()">Atualizar</button>
     </div>
-    <div class="control-box">
-      <label for="datasetCountInput">Conjuntos de Dados:</label>
-      <input type="number" id="datasetCountInput" value="1" min="1" max="3">
-      <button onclick="updateDatasetCount()">Atualizar</button>
-    </div>
-    <div class="control-box">
+    <div class="control-box dataset-box">
       <label for="voltageSelect">Escala de Tensão:</label>
       <select id="voltageSelect" onchange="setVoltageRange()">
         <option value="25V">25 V</option>
@@ -159,6 +180,14 @@
         <option value="uA">2000 uA</option>
         <option value="mA">200 mA</option>
         <option value="A" selected>10 A</option>
+      </select>
+    </div>
+    <div class="control-box dataset-box">
+      <label for="datasetCountInput">Conjuntos de Dados:</label>
+      <select id="datasetCountInput" onchange="updateDatasetCount()">
+        <option value=1 selected>1 Dispositivo</option>
+        <option value=2>2 Dispositivos</option>
+        <option value=3>3 Dispositivos</option>
       </select>
     </div>
   </div>
@@ -218,7 +247,7 @@
 
     //-------- VARIABLES AND DEFINITIONS -------------------------------------
     let isPlaying = false;
-    let triggerValue = 1; //Default trigger value
+    let triggerValue = 0; //Default trigger value
     let trigger_ch = "voltage"; //Default trigger source
     const maxTriggerLenght = 180; //maximum number of points to try to trigger
     let triggerType = "AC"; // Default trigger type
@@ -343,7 +372,7 @@
 
         //Extract Datasets and multiply to correct scale
         for (let i = 0; i < maxDatasets; i++) {
-          
+
           const voltageValues = chartData[i].voltage_value.map(value => value * voltageMultiplier);
           const currentValues = chartData[i].current_value.map(value => value * currentMultiplier);
           const voltageTimes = chartData[i].voltage_time;
@@ -521,8 +550,8 @@
       let previousCrossingTime = null;
 
       for (let i = 1; i < times.length; i++) {
-        // Detect zero crossing (positive-to-negative or negative-to-positive)
-        if ((values[i - 1] <= 0 && values[i] > 0) || (values[i - 1] >= 0 && values[i] < 0)) {
+        // Detect zero crossing (negative-to-positive)
+        if ((values[i - 1] <= 0 && values[i] > 0)) {
           if (previousCrossingTime !== null) {
             const period = times[i] - previousCrossingTime;
             periods.push(period);
@@ -626,6 +655,18 @@
       const inputValue = document.getElementById('triggerValueInput').value;
       triggerValue = parseFloat(inputValue);
       console.log('Trigger Value updated to:', triggerValue);
+    }
+
+    function setTriggerType() {
+      const triggerTypeDropdown = document.getElementById("triggerTypeSelect");
+      triggerType = triggerTypeDropdown.value;
+      console.log('Trigger Type selected to be:', triggerType);
+    }
+
+    function setTriggerChannel() {
+      const triggerChannelDropdown = document.getElementById("triggerChannelSelect");
+      trigger_ch = triggerChannelDropdown.value;
+      console.log('Trigger Channel selected to be:', trigger_ch);
     }
   </script>
 
