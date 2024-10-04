@@ -239,11 +239,15 @@
     |  uA   | 0.000001875     |
     */
 
-    const current_A_mult = 0.01875;
-    const current_mA_mult = 0.0001856;
-    const current_uA_mult = 0.000001875;
+    const current_A_adjust = 0.72696; //Calibration value for A
+    const current_mA_adjust = 1; //Calibration value for mA
+    const current_uA_adjust = 1; //Calibration value for uA
+    const current_A_mult = 0.01875 * current_A_adjust;
+    const current_mA_mult = 0.0001856 * current_mA_adjust;
+    const current_uA_mult = 0.000001875 * current_uA_adjust;
     let selectedCurrent = "A" //Default Current in selector
     let currentMultiplier = current_A_mult; //default in A
+    
 
     //-------- VARIABLES AND DEFINITIONS -------------------------------------
     let isPlaying = false;

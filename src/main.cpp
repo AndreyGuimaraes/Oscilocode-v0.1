@@ -1,118 +1,93 @@
 #include <Arduino.h>
+#include <Definitions.h>
 #include <WiFi.h>
-#include <Wire.h>
 #include <SPIFFS.h>
-#include <esp_now.h>
 #include <ESPAsyncWebServer.h>
 #include <WebSocketsServer.h>
-#include <WebSocketsClient.h>
-#include <ADS1015_WE.h>
-#include <Definitions.h>
 #include <ArduinoJson.h>
+#include <ADS1015_WE.h>
+#include <math.h>
+#include <stdlib.h>
 
 // HTTP and Websocket objects
 AsyncWebServer server(80);
 WebSocketsServer webSocket = WebSocketsServer(81);
-WebSocketsClient client_ws;
 
-//Json helper object
-StaticJsonDocument<200> doc_aux;
+// Json helper object
+//  StaticJsonDocument<200> doc;
 
-// PROTOTYPES
-void ads_read_values(Chart_data *chart);
-void ads_send_sync();
-void ADC_Loop(void *pvParameters);
-void macStringToBytes(const char *macStr, uint8_t *macBytes);
-void send_data_to_MC(Chart_data *chart);
-void resetChartData(Chart_data* data);
+uint64_t timeNow = 0;
 
-// CALLBACKS
-void onEspNowDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len){
-  memcpy(&esp_now_message, incomingData, sizeof(esp_now_message));
-  if (firstRun){
-    debug("ESP CLIENT MODE\n");
-    currentState = ESP_CLIENT_MODE;
-    firstRun = false;
-  }
-  else
-  currentState = ESP_CLIENT_AWAITING_SYNC;
-  debug("ESP CLIENT AWAITING SYNC\n");
+// Voltage and current flags when data is ready to be read
+void IRAM_ATTR onVoltageDrdy()
+{
+  voltage_data_ready = true;
+}
+void IRAM_ATTR onCurrentDrdy()
+{
+  current_data_ready = true;
 }
 
-void onHomepageRequest(AsyncWebServerRequest *request) {
+// Http and chart lib callbacks for requests
+void onHomepageRequest(AsyncWebServerRequest *request)
+{
   IPAddress remote_ip = request->client()->remoteIP();
   Serial.println("[" + remote_ip.toString() +
-                  "] HTTP GET request of " + request->url());
-  request->send(SPIFFS, "/test.html", "text/html");
+                 "] HTTP GET request of " + request->url());
+  request->send(SPIFFS, "/index.html", "text/html");
 }
 
-void onChartlibRequest(AsyncWebServerRequest *request) {
+void onChartlibRequest(AsyncWebServerRequest *request)
+{
   IPAddress remote_ip = request->client()->remoteIP();
   Serial.println("[" + remote_ip.toString() +
-                  "] HTTP GET request of " + request->url());
+                 "] HTTP GET request of " + request->url());
   request->send(SPIFFS, "/chart.js", "text/javascript");
 }
 
+//Since there is a need to change the 
+void change_voltage_range(ADS1015_WE *ads, ADS1115_RANGE range)
+{
+  ads->setVoltageRange_mV(range);
+  ads->setAlertPinToConversionReady();
+}
+
+// Websocket event handler
 void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
 {
   switch (type)
   {
-  case WStype_BIN:  //Only ESP-TO-ESP communication sends BINARIES in this implementation
-    if (currentState == ESP_SERVER_RECEIVING_CLIENTS){
-      // Uses counter support to count how many clients are still pending sending data
-      if (counter_support == 0){
-        counter_support = client_counter;
-        currentState = ESP_SERVER_SENDING;
-        debug("ESP MODE SERVER SENDING\n");
-      }
-      else if (client_id[0] == num){
-        memcpy(&receivedData1, payload, length);
-        counter_support--;
-      } else if (client_id[1] == num){
-        memcpy(&receivedData2, payload, length);
-        counter_support--;
-      }
-    }
-    break;
   case WStype_TEXT:
-    // Always receive JSON 
-    deserializeJson(doc_aux, payload, length);
-
-      //If it is a new channel, receive mac address from browser
-      if (doc_aux.containsKey("mac")) {
-        //Converts the JSON mac to uint8_t mac
-        const char *macStr = doc_aux["mac"];
-        uint8_t macBytes[6];
-        macStringToBytes(macStr, macBytes);
-
-        //Populate ESP-NOW message
-        esp_now_message.chart_id = client_counter + 1;
-        strcpy(esp_now_message.ssid, ssid_name);
-
-        //Define peer information
-        memcpy(peerInfo.peer_addr, macBytes, 6);
-        peerInfo.channel = 0;
-        peerInfo.encrypt = false;
-
-        esp_now_add_peer(&peerInfo);
-        esp_err_t result = esp_now_send(macBytes, (uint8_t *) &esp_now_message, sizeof(esp_now_message));
-
-        if (result == ESP_OK){
-          currentState = ESP_SERVER_PAIRED;
-          debug("ESP MODE SERVER PAIRED\n");
-        } else {
-          webSocket.sendTXT(num, "MAC NOK");
-          currentState = ESP_SERVER_MODE;
-          debug("ESP MODE SERVER MODE AFTER SERVER NOK\n");
-        }
-      }
-      else if (doc_aux.containsKey("start")){
-        currentState = ESP_SERVER_SAMPLING;
-        debug("ESP MODE SERVER SAMPLING\n");
-      }
-      // else if (doc.containsKey())
-
-    doc_aux.clear();
+    // Convert payload to a string and print it
+    if (!strcmp("25V", (char *)payload))
+    {
+      change_voltage_range(&ads_voltage, ADS1015_RANGE_0256);
+      debug("Voltage 25V\n");
+    }
+    else if (!strcmp("50V", (char *)payload))
+    {
+      change_voltage_range(&ads_voltage, ADS1015_RANGE_0512);
+      debug("Voltage 50V\n");
+    }
+    else if (!strcmp("100V", (char *)payload))
+    {
+      change_voltage_range(&ads_voltage, ADS1015_RANGE_1024);
+      debug("Voltage 100V\n");
+    }
+    else if (!strcmp("200V", (char *)payload))
+    {
+      change_voltage_range(&ads_voltage, ADS1015_RANGE_2048);
+      debug("Voltage 200V\n");
+    }
+    else if (!strcmp("250V", (char *)payload))
+    {
+      change_voltage_range(&ads_voltage, ADS1015_RANGE_4096);
+      debug("Voltage 250V\n");
+    }
+    else
+    {
+      // verify other cases
+    }
     break;
 
   case WStype_DISCONNECTED:
@@ -121,246 +96,152 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t lengt
 
   case WStype_CONNECTED:
     Serial.printf("[%u] Connected\n", num);
-    if(currentState == AWAITING_CONNECTION){ //First connection possible is with cellphone
+    if (currentState == AWAITING_CONNECTION)
+    { // First connection possible is with cellphone
       main_client_id = num;
-      currentState = ESP_SERVER_SAMPLING;
+      currentState = ESP_SERVER_MODE;
       debug("ESP MODE SERVER MODE\n");
     }
-    else if (currentState == ESP_SERVER_PAIRED){
-      client_id[client_counter] = num;
-      webSocket.sendTXT(main_client_id, "MAC OK");
-      currentState = ESP_SERVER_MODE;
-      client_counter++;
-      counter_support = client_counter;
-    }
     break;
   default:
     break;
   }
 }
 
-void IRAM_ATTR onVoltageDrdy(){
-  voltage_data_ready = true;
-}
-void IRAM_ATTR onCurrentDrdy(){
-  current_data_ready = true;
-}
-
-void setup()
+// Reset chart struct data
+void resetChartData(Chart_data *data)
 {
-  // Begin Serial communication
-  Serial.begin(115200);
-  // Guarantee SYNC_PIN mode
-  pinMode(SYNC_PIN, INPUT);
-
-  //Initialize SPIFFS
-  if (!SPIFFS.begin(true)) {
-    Serial.println("An error has occurred while mounting SPIFFS");
-    return;
-  }
-
-  // Configure ESP32 as an Access Point (AP)
-  WiFi.softAP(OSCILOBOY_NAME);
-
-  // Get the IP address of the AP
-  IPAddress IP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(IP);
-  delay(500);
-
-  // Begin HTML Server and callbacks
-  server.on("/", HTTP_GET, onHomepageRequest);
-  server.on("/chart.js", HTTP_GET, onChartlibRequest);
-  server.begin();
-
-  // Begin Websocket server
-  webSocket.begin();
-  webSocket.onEvent(onWebSocketEvent);
-
-  // Begin ESP_NOW connection
-  esp_now_init();
-  esp_now_register_recv_cb(onEspNowDataRecv);
- 
-  // ADC initialization
-  AdcI2C.begin(ADC_I2C_SDA_PIN, ADC_I2C_SCL_PIN, ADC_I2C_SPEED);
-
-  if (!ads_voltage.init(true)) // true is necessary to configure lib for ADS1015 instead of ADS1115
-  {
-    Serial.println("ADS VOLTAGE initialization - FAILURE");
-    while (1);
-  } else {
-    Serial.println("ADS VOLTAGE initialization - SUCCESS");
-  }
-
-  if (!ads_current.init(true))
-  {
-    Serial.println("ADS CURRENT initialization - FAILURE");
-    while (1);
-  } else {
-    Serial.println("ADS CURRENT initialization - SUCCESS");
-  }
-
-  // Voltage reading initial config
-  ads_voltage.setCompareChannels(ADS1015_COMP_0_1);
-  ads_voltage.setConvRate(ADS1015_3300_SPS);
-  ads_voltage.setAlertPinMode(ADS1015_ASSERT_AFTER_1);
-  ads_voltage.setMeasureMode(ADS1015_CONTINUOUS);
-  ads_voltage.setVoltageRange_mV(ADS1015_RANGE_4096);
-
-  // Current reading initial config
-  ads_current.setCompareChannels(ADS1015_COMP_0_1);
-  ads_current.setConvRate(ADS1015_3300_SPS);
-  ads_current.setMeasureMode(ADS1015_CONTINUOUS);
-  ads_current.setVoltageRange_mV(ADS1015_RANGE_0512);
-
-  //Create a new task to handle ADC readings in a separated core
-  xTaskCreatePinnedToCore(ADC_Loop, "ADC_Handler", 10000, NULL, 1, &ADC_handler, 0);
+  data->chart_id = 0;
+  data->voltage_gain = 0;
+  data->current_type = 0;
+  memset(data->voltage_value, 0, sizeof(data->voltage_value));
+  memset(data->current_value, 0, sizeof(data->current_value));
+  memset(data->voltage_time, 0, sizeof(data->voltage_time));
+  memset(data->current_time, 0, sizeof(data->current_time));
 }
 
-//Runs on Core_0
-void ADC_Loop(void *pvParameters)
-{
-  attachInterrupt(digitalPinToInterrupt(VOLTAGE_DRDY_PIN), onVoltageDrdy, FALLING);
-  attachInterrupt(digitalPinToInterrupt(CURRENT_DRDY_PIN), onCurrentDrdy, FALLING);
-
-  while (true)
-  {
-    switch (currentState)
-    {
-    case ESP_SERVER_SAMPLING:
-        ads_send_sync();
-        // currentState = ESP_SERVER_RECEIVING_CLIENTS;
-        // debug("ESP MODE SERVER RECEIVING CLIENTS\n");
-        ads_read_values(&localData);
-        send_data_to_MC(&localData);
-      break;
-    
-    case ESP_CLIENT_SAMPLING:
-        ads_read_values(&localData);
-        currentState = ESP_CLIENT_SENDING;
-        debug("ESP MODE CLIENT SENDING\n");
-
-    default:
-      break;
-    }
-    vTaskDelay(1);
-  }
-}
-
-//Runs on Core_1
-void loop()
-{
-  switch (currentState)
-  {
-  case ESP_CLIENT_MODE:
-    webSocket.close();
-    WiFi.softAPdisconnect(true);
-    WiFi.begin(esp_now_message.ssid);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(1000);
-        Serial.println("Connecting Wifi");
-    }
-    client_ws.begin("192.168.4.1", 81, "/");
-    currentState = ESP_CLIENT_AWAITING_SYNC;
-    break;
-
-  case ESP_CLIENT_AWAITING_SYNC:
-    client_ws.loop();
-    break;
-  
-  case ESP_CLIENT_SAMPLING:
-    client_ws.loop();
-    break;
-  
-  case ESP_CLIENT_SENDING:
-    
-    break;
-
-  case ESP_SERVER_SENDING:
-      send_data_to_MC(&localData);
-      if (client_counter == 2){
-        send_data_to_MC(&receivedData2);
-      }
-      if (client_counter == 1){
-        send_data_to_MC(&receivedData1);
-      }
-    break;
-  
-  default:
-    webSocket.loop();
-    break;
-  }
-}
-
-//Functions
-void macStringToBytes(const char *macStr, uint8_t *macBytes) {
-    sscanf(macStr, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-           &macBytes[0], &macBytes[1], &macBytes[2],
-           &macBytes[3], &macBytes[4], &macBytes[5]);
-}
-
-void ads_send_sync(){
-  pinMode(SYNC_PIN, OUTPUT);
-  digitalWrite(SYNC_PIN, LOW);
-  delayMicroseconds(100);
-  digitalWrite(SYNC_PIN, HIGH);
-}
-
+// Adc Reading function
 void ads_read_values(Chart_data *chart)
 {
-  uint8_t voltage_count = 0;
-  uint8_t current_count = 0;
+  uint16_t voltage_count = 0;
+  uint16_t current_count = 0;
+  int64_t read_start_time = 0;
 
-  //Guarantee that all data is 0 before populating
+  // Guarantee that all data is 0 before populating
   resetChartData(chart);
 
-  int64_t read_start_time = esp_timer_get_time();
+  // Set the "zero" time reading
+  read_start_time = esp_timer_get_time();
 
-  while ((esp_timer_get_time() - read_start_time) < SAMPLING_TIME_US)
+  // Make all the possible readings considering the maximum time given
+  while (SAMPLING_TIME_US > (esp_timer_get_time() - read_start_time))
   {
-    
-    if (voltage_data_ready){
-    voltage_data_ready = false;
-    chart->voltage_value[voltage_count] = ads_voltage.getResultWithRange(-2048, 2048);
-    chart->voltage_time[voltage_count] = esp_timer_get_time() - read_start_time;
+    if (voltage_data_ready)
+    { // voltage and current data ready are given by an interrupt
+      voltage_data_ready = false;
+      chart->voltage_value[voltage_count] = ads_voltage.getResultWithRange(-2048, 2048);
+      chart->voltage_time[voltage_count] = esp_timer_get_time() - read_start_time;
+      voltage_count++;
     }
 
-    if (current_data_ready){
-    current_data_ready = false;
-    chart->current_time[current_count] = ads_current.getResultWithRange(-2048, 2048);
-    chart->current_time[current_count] = esp_timer_get_time() - read_start_time;
+    if (current_data_ready)
+    {
+      current_data_ready = false;
+      chart->current_value[current_count] = ads_current.getResultWithRange(-2048, 2048);
+      chart->current_time[current_count] = esp_timer_get_time() - read_start_time;
+      current_count++;
     }
   }
 }
 
-void send_data_to_MC(Chart_data *chart)
+// Test only function
+void fill_data(Chart_data *chart, int chart_id)
 {
-  StaticJsonDocument<8192> doc;
-
-  doc["chart_id"] = chart->chart_id;
-  doc["voltage_gain"] = chart->voltage_gain;
-  doc["current_type"] = chart->current_type;
-  JsonArray voltageArray = doc["voltage_value"].to<JsonArray>();
-  JsonArray currentArray = doc["current_value"].to<JsonArray>();
-  JsonArray voltageTimeArray = doc["voltage_time"].to<JsonArray>();
-  JsonArray currentTimeArray = doc["current_time"].to<JsonArray>();
-  for (int i = 0; i < VECTOR_SIZE; i++)
+  chart->chart_id = chart_id;
+  if (chart_id == 2)
   {
-    voltageArray.add(chart->voltage_value[i]);
-    currentArray.add(chart->current_value[i]);
-    voltageTimeArray.add(chart->voltage_time[i]);
-    currentTimeArray.add(chart->current_time[i]);
+    chart->voltage_gain = 2.5;
+    chart->current_type = 1;
+
+    float frequency = 60.0;
+    float sample_rate = VECTOR_SIZE / (5 / frequency); // 5 ciclos completos
+    float phase_offset = 30.0 * PI / 180.0;            // 30 graus em radianos
+
+    // Random initial offset
+    float random_offset = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 2 * PI;
+
+    for (int i = 0; i < VECTOR_SIZE; i++)
+    {
+      float time = i / sample_rate;
+      chart->voltage_value[i] = 100 * sin(2 * PI * frequency * time + random_offset);
+      chart->current_value[i] = 20 * sin(2 * PI * frequency * time + random_offset + phase_offset);
+      chart->voltage_time[i] = 2000 * i; // Tempo de tensão
+      chart->current_time[i] = 2000 * i; // Tempo de corrente
+    }
   }
-  size_t jsonSize = measureJson(doc) + 1; // +1 para o terminador nulo
+  else if (chart_id == 1)
+  {
+    chart->voltage_gain = 5.0;
+    chart->current_type = 2;
+
+    float frequency = 50.0;
+    float sample_rate = VECTOR_SIZE / (10 / frequency); // 10 ciclos completos
+    float phase_offset = 45.0 * PI / 180.0;             // 45 graus em radianos
+
+    // Different random initial offset
+    float random_offset = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 2 * PI;
+
+    for (int i = 0; i < VECTOR_SIZE; i++)
+    {
+      float time = i / sample_rate;
+      chart->voltage_value[i] = 150 * sin(2 * PI * frequency * time + random_offset);
+      chart->current_value[i] = 25 * sin(2 * PI * frequency * time + random_offset + phase_offset);
+      chart->voltage_time[i] = 1500 * i; // Tempo de tensão
+      chart->current_time[i] = 1500 * i; // Tempo de corrente
+    }
+  }
+}
+
+// Sends data to the server
+// Converts the readings into a Json file and then send via WebSocket
+void send_data_to_MC(Chart_data charts[], int num_charts)
+{
+  DynamicJsonDocument doc(JSON_GRAPH_SIZE * num_charts); // Adjust size as needed based on the number of charts and data size
+  JsonArray chartArray = doc.to<JsonArray>();
+
+  for (int j = 0; j < num_charts; j++)
+  {
+    Chart_data *chart = &charts[j];
+
+    JsonObject chartObject = chartArray.createNestedObject();
+    chartObject["chart_id"] = chart->chart_id;
+    chartObject["voltage_gain"] = chart->voltage_gain;
+    chartObject["current_type"] = chart->current_type;
+
+    JsonArray voltageArray = chartObject["voltage_value"].to<JsonArray>();
+    JsonArray currentArray = chartObject["current_value"].to<JsonArray>();
+    JsonArray voltageTimeArray = chartObject["voltage_time"].to<JsonArray>();
+    JsonArray currentTimeArray = chartObject["current_time"].to<JsonArray>();
+
+    for (int i = 0; i < VECTOR_SIZE; i++)
+    {
+      voltageArray.add(chart->voltage_value[i]);
+      currentArray.add(chart->current_value[i]);
+      voltageTimeArray.add(chart->voltage_time[i]);
+      currentTimeArray.add(chart->current_time[i]);
+    }
+  }
+
+  size_t jsonSize = measureJson(doc) + 1; // +1 for null terminator
   char *jsonString = (char *)malloc(jsonSize);
 
   if (jsonString != nullptr)
   {
-    // Serializa o JSON para a string alocada dinamicamente
+    // Serialize JSON and send it
     size_t n = serializeJson(doc, jsonString, jsonSize);
     jsonString[n] = '\0';
     webSocket.sendTXT(main_client_id, jsonString);
-    free(jsonString); // Libera a memória alocada
+    free(jsonString); // Free allocated memory after sending
   }
   else
   {
@@ -368,12 +249,103 @@ void send_data_to_MC(Chart_data *chart)
   }
 }
 
-void resetChartData(Chart_data* data) {
-    data->chart_id = 0;
-    data->voltage_gain = 0;
-    data->current_type = 0;
-    memset(data->voltage_value, 0, sizeof(data->voltage_value));
-    memset(data->current_value, 0, sizeof(data->current_value));
-    memset(data->voltage_time, 0, sizeof(data->voltage_time));
-    memset(data->current_time, 0, sizeof(data->current_time));
+// Function to startup ADC voltage and current in default configurations
+void ads_initial_config(ADS1015_WE *ads)
+{
+  if (!ads->init(true)) // true is necessary to configure lib for ADS1015 instead of ADS1115
+  {
+    Serial.println("ADS initialization - FAILURE");
+    while (1)
+      ;
+  }
+  else
+  {
+    Serial.println("ADS initialization - SUCCESS");
+  }
+
+  ads->setCompareChannels(ADS1015_COMP_0_1);
+  ads->setConvRate(ADS1015_3300_SPS);
+  ads->setMeasureMode(ADS1015_CONTINUOUS);
+  ads->setAlertPinMode(ADS1015_ASSERT_AFTER_1);
+  ads->setAlertLatch(ADS1015_LATCH_ENABLED); // this prevents the code from being always interrupted when the adc gets another reading
+  ads->setAlertPinToConversionReady();
+}
+
+// Startup SPIFFS, Wifi AP, Websockets and - in the future - ESP_NOW
+void network_initialize()
+{
+  // Initialize SPIFFS
+  if (!SPIFFS.begin(true))
+  {
+    Serial.println("An error has occurred while mounting SPIFFS");
+    return;
+  }
+
+  // Configure ESP32 as an Access Point (AP)
+  WiFi.softAP(OSCILOBOY_NAME);
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+
+  // Set websocket callbacks
+  webSocket.begin();
+  webSocket.onEvent(onWebSocketEvent);
+
+  // Set http callbacks for homepage and chart.js lib
+  server.on("/", HTTP_GET, onHomepageRequest);
+  server.on("/chart.js", HTTP_GET, onChartlibRequest);
+  server.begin();
+}
+
+
+void setup()
+{
+  // Initialize serial communication
+  Serial.begin(115200);
+
+  // Initialize all network communication
+  network_initialize();
+
+  // ------------------ ADC initialization ----------------------
+  AdcI2C.begin(ADC_I2C_SDA_PIN, ADC_I2C_SCL_PIN, ADC_I2C_SPEED);
+
+  // Set ESP32 pins to interrupt with conversion ready function of the adc
+  pinMode(VOLTAGE_DRDY_PIN, INPUT_PULLUP);
+  pinMode(CURRENT_DRDY_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(VOLTAGE_DRDY_PIN), onVoltageDrdy, FALLING);
+  attachInterrupt(digitalPinToInterrupt(CURRENT_DRDY_PIN), onCurrentDrdy, FALLING);
+  
+  // Voltage and current startup and initial config
+  ads_initial_config(&ads_voltage);
+  ads_initial_config(&ads_current);
+
+
+  // -------- Voltage Ranges _initial_ Definition --------------
+  change_voltage_range(&ads_voltage, ADS1015_RANGE_4096);
+  // change_voltage_range(&ads_voltage, ADS1015_RANGE_2048);
+  // change_voltage_range(&ads_voltage, ADS1015_RANGE_1024);
+  // change_voltage_range(&ads_voltage, ADS1015_RANGE_0512);
+  // change_voltage_range(&ads_voltage, ADS1015_RANGE_0256);
+
+  // -------- Current Ranges Definition (always remains the smallest one) -------------
+  // ads_current.setVoltageRange_mV(ADS1015_RANGE_4096);
+  // ads_current.setVoltageRange_mV(ADS1015_RANGE_2048);
+  // ads_current.setVoltageRange_mV(ADS1015_RANGE_1024);
+  // ads_current.setVoltageRange_mV(ADS1015_RANGE_0512);
+  change_voltage_range(&ads_current, ADS1015_RANGE_0256);
+
+  // Pin definitions and interrupts for ADC
+  Serial.println("Setup Finalizado");
+  delay(500);
+}
+
+void loop()
+{
+  //--- Test only functions
+  // fill_data(&charts[0], 1);
+  // fill_data(&charts[1], 2);
+  //--- Test only functions
+  ads_read_values(&charts[0]);
+  send_data_to_MC(charts, 1);
+  webSocket.loop();
 }
