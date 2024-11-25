@@ -44,6 +44,10 @@
 #define VOLTAGE_DRDY_PIN 23
 #define CURRENT_DRDY_PIN 17
 
+// Definition for Buzzer Pin
+
+#define BUZZER_PIN 14
+
 // Data Size handler
 #define JSON_GRAPH_SIZE 15000 // Allocation memory in bytes for each json file graph.
 #define NUM_CHARTS 3          // Defines the number of charts to allocate memory

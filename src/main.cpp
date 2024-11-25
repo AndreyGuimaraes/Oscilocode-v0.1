@@ -18,6 +18,8 @@ WebSocketsServer webSocket = WebSocketsServer(81);
 
 uint64_t timeNow = 0;
 
+bool adcType = 0;
+
 // Voltage and current flags when data is ready to be read
 void IRAM_ATTR onVoltageDrdy()
 {
@@ -120,6 +122,20 @@ void resetChartData(Chart_data *data)
   memset(data->current_time, 0, sizeof(data->current_time));
 }
 
+//Buzzer Setup and Control functions
+void buzzer_setup(){
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+}
+
+void play_buzzer(bool shouldPlay){
+  if (shouldPlay) {
+    digitalWrite(BUZZER_PIN, HIGH);
+  } else {
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+}
+
 // Adc Reading function
 void ads_read_values(Chart_data *chart)
 {
@@ -150,6 +166,13 @@ void ads_read_values(Chart_data *chart)
       chart->current_value[current_count] = ads_current.getResultWithRange(-2048, 2048);
       chart->current_time[current_count] = esp_timer_get_time() - read_start_time;
       current_count++;
+
+      //After current reading triggers the buzzer if value is close to 2048 ou -2048 to indicate current overflow
+      if ((chart->current_value[current_count] >= 2045) || (chart->current_value[current_count] <= -2045)){
+        play_buzzer(true);
+      }else{
+        play_buzzer(false);
+      }
     }
   }
 }
@@ -240,7 +263,9 @@ void send_data_to_MC(Chart_data charts[], int num_charts)
     // Serialize JSON and send it
     size_t n = serializeJson(doc, jsonString, jsonSize);
     jsonString[n] = '\0';
-    webSocket.sendTXT(main_client_id, jsonString);
+    // WHEN MODULARITY IS IMPLEMENTED, THE PEERS NEED TO ADDRESS THE BROADCAST WAY
+    // webSocket.sendTXT(main_client_id, jsonString);
+    webSocket.broadcastTXT(jsonString);
     free(jsonString); // Free allocated memory after sending
   }
   else
@@ -254,13 +279,19 @@ void ads_initial_config(ADS1015_WE *ads)
 {
   if (!ads->init(true)) // true is necessary to configure lib for ADS1015 instead of ADS1115
   {
-    Serial.println("ADS initialization - FAILURE");
-    while (1)
-      ;
+    if (adcType == 0)
+    Serial.println("Voltage ADS initialization - FAILURE");
+    else
+    Serial.println("Current ADS initialization - FAILURE");
+    adcType = 1;
   }
   else
   {
-    Serial.println("ADS initialization - SUCCESS");
+    if (adcType == 0)
+    Serial.println("Voltage ADS initialization - SUCCESS");
+    else
+    Serial.println("Current ADS initialization - SUCCESS");
+    adcType = 1;
   }
 
   ads->setCompareChannels(ADS1015_COMP_0_1);
@@ -298,8 +329,10 @@ void network_initialize()
 }
 
 
+// +++++++++++++++++++++++++ SETUP SETUP SETUP SETUP SETUP SETUP SETUP SETUP ++++++++++++++++++++++++
 void setup()
 {
+  buzzer_setup();
   // Initialize serial communication
   Serial.begin(115200);
 
@@ -317,6 +350,7 @@ void setup()
   
   // Voltage and current startup and initial config
   ads_initial_config(&ads_voltage);
+  delay(300);
   ads_initial_config(&ads_current);
 
 
@@ -328,10 +362,10 @@ void setup()
   // change_voltage_range(&ads_voltage, ADS1015_RANGE_0256);
 
   // -------- Current Ranges Definition (always remains the smallest one) -------------
-  // ads_current.setVoltageRange_mV(ADS1015_RANGE_4096);
-  // ads_current.setVoltageRange_mV(ADS1015_RANGE_2048);
-  // ads_current.setVoltageRange_mV(ADS1015_RANGE_1024);
-  // ads_current.setVoltageRange_mV(ADS1015_RANGE_0512);
+  // change_voltage_range(&ads_current, ADS1015_RANGE_4096);
+  // change_voltage_range(&ads_current, ADS1015_RANGE_2048);
+  // change_voltage_range(&ads_current, ADS1015_RANGE_1024);
+  // change_voltage_range(&ads_current, ADS1015_RANGE_0512);
   change_voltage_range(&ads_current, ADS1015_RANGE_0256);
 
   // Pin definitions and interrupts for ADC
@@ -339,6 +373,7 @@ void setup()
   delay(500);
 }
 
+// +++++++++++++++++++++++++ LOOP LOOP LOOP LOOP LOOP LOOP LOOP LOOP ++++++++++++++++++++++++
 void loop()
 {
   //--- Test only functions
